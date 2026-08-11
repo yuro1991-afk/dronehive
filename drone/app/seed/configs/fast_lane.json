@@ -1,0 +1,48 @@
+{
+  "schema": "ai.worker.drone.fast_lane.v1",
+  "name": "fast-lane",
+  "enabled": true,
+  "vs_full_seal": {
+    "full": "24 nodes L||R + callosum + full clean-slate passport/recycle/registry",
+    "fast": "5-node serial chain + lite tools + lite seal (no dual hemisphere)"
+  },
+  "nodes": [
+    "F01_intake",
+    "F02_plan",
+    "F03_execute",
+    "F04_verify",
+    "F05_seal"
+  ],
+  "role_map": {
+    "F01_intake": "intake",
+    "F02_plan": "plan",
+    "F03_execute": "execute",
+    "F04_verify": "verify",
+    "F05_seal": "seal"
+  },
+  "lm_roles": ["plan", "execute"],
+  "tools": {
+    "lite": true,
+    "one_manifest_at_seal": true,
+    "skip_per_node_logs": true
+  },
+  "clean_slate": {
+    "mode": "lite",
+    "passport": false,
+    "full_recycle": false,
+    "wipe_audit": false,
+    "write_next": false,
+    "live_registry": false,
+    "note": "Use --lane full for production seal with full clean-slate upgrade"
+  },
+  "defaults": {
+    "lm_assist": "none",
+    "parallel_hemispheres": false,
+    "max_workers_swarm": 4
+  },
+  "honesty": {
+    "fast_is_not_full_seal": true,
+    "evidence_still_required": true,
+    "false_green": 0
+  }
+}

@@ -1,0 +1,4 @@
+# DroneHive core — zero hard deps (stdlib).
+# Install:  pip install -e .
+# Desktop:  pip install -e ".[desktop]"
+# Or:       pip install -r requirements-desktop.txt

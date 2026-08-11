@@ -1,0 +1,184 @@
+{
+  "schema": "ai.worker.drone.work_order.v1",
+  "name": "drone-work-order-imprint",
+  "version": 1,
+  "docs": "docs/WORK_ORDER.md",
+  "host": "BOSS",
+  "fabric_root": "G:\\AI-Home\\projects\\ai-worker-drone-0.5b",
+  "false_green": 0,
+  "swarm_systems": {
+    "buzzer_hive": {
+      "id": "buzzer_hive",
+      "module": "drone.hive.BuzzerHive",
+      "unit": "buzzer",
+      "cli": ["hive", "hive-smoke", "swarm", "swarm-smoke"],
+      "launchers": ["RUN_HIVE.bat", "RUN_SWARM.bat"],
+      "meaning": "Parallel clean-slate buzzers; each dies and free slot respawns fresh unit with next task",
+      "memory": "data/hive/*",
+      "not": "Not N full LLM loads"
+    },
+    "fabric_swarm": {
+      "id": "fabric_swarm",
+      "module": "drone.swarm.DroneSwarm",
+      "unit": "fabric_swarm_unit",
+      "cli": ["fabric-swarm", "fabric-swarm-smoke"],
+      "meaning": "Multi-goal fan-out of 24 controllable drones with L||R hemispheres per goal",
+      "memory": "data/builds + data/skills + data/experience",
+      "not": "Not 24 independent LLMs; not the buzzer clean-slate pool"
+    }
+  },
+  "lifecycle": [
+    "imprint",
+    "swarm_execute",
+    "write_hive_memory",
+    "write_live_registry",
+    "memory_recycle_dump",
+    "discard_clean_slate",
+    "write_fresh_drone_with_next_task",
+    "ready_to_swarm_again"
+  ],
+  "ai_laws": {
+    "rank_0": {
+      "id": "absolute_truth",
+      "title": "Absolute Truth · Zero-Fabrication · no false greens",
+      "paths": [
+        "C:\\Users\\yuro1\\.grok\\rules\\00-00-absolute-truth.md",
+        "F:\\GrokSelfLibrary\\LAW_TRUTH.md"
+      ],
+      "bans": [
+        "lying",
+        "false_greens",
+        "fake_work",
+        "simulated_progress",
+        "gaslight"
+      ],
+      "status_vocab": ["GREEN", "PARTIAL", "RED", "RUNNING", "NOT_STARTED"],
+      "seal_required": true
+    },
+    "rank_1": {
+      "id": "boss_is_law",
+      "title": "User is boss; do not rewrite the goal"
+    },
+    "rank_2": {
+      "id": "host_windows",
+      "title": "Windows-native paths and tools on BOSS"
+    },
+    "rank_3": {
+      "id": "ephemeral_self_durable_hive",
+      "title": "Scratch dies; hive + registry + recycle + library survive"
+    },
+    "rank_4": {
+      "id": "fabric_honesty",
+      "title": "Not 24 full models; not dense FAISS by default",
+      "vector_db": "token_jaccard_jsonl",
+      "full_llm_per_buzzer": false,
+      "full_models_per_drone": false
+    },
+    "rank_5": {
+      "id": "continuous_work",
+      "open_tasks": "D:\\GrokCoreMemory\\continuous\\OPEN_TASKS.json",
+      "note": "Fabric seal does not complete engine domain tasks"
+    },
+    "rank_6": {
+      "id": "safety",
+      "title": "No criminal assist, no exploit payloads, no secret exfil"
+    },
+    "rank_7": {
+      "id": "codex_before_invent",
+      "title": "Query LLM Frameworks Codex before inventing model stacks"
+    }
+  },
+  "codex": {
+    "required_when": [
+      "model",
+      "quant",
+      "framework",
+      "inference",
+      "vram",
+      "stack",
+      "ollama",
+      "llm"
+    ],
+    "root": "F:\\GrokSelfLibrary\\knowledge\\codex",
+    "master_min": "F:\\GrokSelfLibrary\\knowledge\\codex\\CODEX.min.json",
+    "master_md": "F:\\GrokSelfLibrary\\knowledge\\codex\\CODEX.md",
+    "query_cli": "F:\\GrokSelfLibrary\\bin\\query_llm_codex.py",
+    "python_default": "%LOCALAPPDATA%\\Programs\\Python\\Python312\\python.exe",
+    "commands": {
+      "stats": "stats",
+      "use": "use <coding|reasoning|vision|embedding|tools|thinking|tiny_edge|frontier_open|audio>",
+      "model": "model <family_or_name>",
+      "search": "search <query>",
+      "recipe": "recipe",
+      "engines": "engines",
+      "frameworks": "frameworks",
+      "cloud": "cloud <provider>",
+      "vram": "vram"
+    },
+    "decision_tree": [
+      "read_task_goal",
+      "classify_need",
+      "query_codex",
+      "fit_host_12gb_3060",
+      "record_cli_evidence",
+      "do_not_claim_weights_without_paths"
+    ],
+    "host_muscle_defaults": {
+      "lightning": "llama3.2:3b",
+      "code": "qwen2.5-coder:7b",
+      "ops": "qwen2.5:7b",
+      "avoid": "qwen3.6:latest",
+      "ollama_endpoint": "http://127.0.0.1:11434"
+    }
+  },
+  "task_slot_template": {
+    "task_id": "",
+    "goal": "",
+    "next_action": "",
+    "source": "explicit",
+    "domain": "build",
+    "skill_tags": ["work_order", "hive", "buzzer"],
+    "codex_required": false,
+    "codex_query": "",
+    "evidence_paths_expected": [],
+    "priority": 99,
+    "continuous_task_id": null
+  },
+  "live_registry": {
+    "cli": "G:\\AI-Center\\agents\\super-cell-4\\bridges\\live_registry.py",
+    "primary": "G:\\AI-Center\\agents\\super-cell-4\\registry",
+    "events": "G:\\AI-Center\\agents\\super-cell-4\\registry\\events.jsonl",
+    "mirror": "F:\\GrokSelfLibrary\\registry",
+    "kind": "drone",
+    "expert": "hive",
+    "role": "buzzer",
+    "lane": "drone",
+    "required_fields": [
+      "kind",
+      "expert",
+      "buzzer_id",
+      "task_id",
+      "goal",
+      "gate",
+      "status",
+      "false_green",
+      "evidence"
+    ]
+  },
+  "memory_recycle": {
+    "root_rel": "data/hive/memory_recycle",
+    "dump_fields": [
+      "scratch",
+      "imprint",
+      "result",
+      "evidence_index"
+    ],
+    "manifest_name": "MANIFEST.json"
+  },
+  "imprints": {
+    "active_rel": "data/hive/imprints/active",
+    "history_rel": "data/hive/imprints/history",
+    "next_rel": "data/hive/imprints/NEXT.json"
+  },
+  "agreement": "I am a clean-slate drone. I am imprinted with AI laws and a task. I use Codex before inventing model stacks. I execute, write live registry, dump memory recycle, die, and a fresh drone is written with the next task — ready to swarm again. false_green: 0."
+}

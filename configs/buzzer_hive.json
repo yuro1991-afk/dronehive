@@ -1,0 +1,47 @@
+{
+  "schema": "ai.worker.drone.buzzer_hive.v1",
+  "name": "buzzer-hive",
+  "mode_default": "parallel",
+  "concept_art": "C:\\Users\\yuro1\\Downloads\\grok-image-594c2067-978d-4ef5-8480-452b19965f8e.jpg",
+  "system_loop": [
+    "receive_tasks_from_library_or_queue",
+    "fan_out_fresh_buzzers_in_parallel",
+    "each_buzzer_runs_dual_hemisphere_fabric",
+    "write_hive_memory_under_lock",
+    "library_outbox_note",
+    "discard_buzzer_clean_slate",
+    "immediately_fill_free_slot_with_next_fresh_buzzer"
+  ],
+  "max_buzzers_default": 6,
+  "max_parallel_workers": 4,
+  "max_parallel_with_lm": 1,
+  "lm_assist_default": "ollama",
+  "tools_enabled": true,
+  "fresh_after_each_task": true,
+  "library": {
+    "root": "F:\\GrokSelfLibrary",
+    "continuous_tasks": "D:\\GrokCoreMemory\\continuous\\OPEN_TASKS.json",
+    "pull_open_tasks": true,
+    "outbox": "data/hive/library_outbox"
+  },
+  "memory": {
+    "kind": "token_jaccard_jsonl",
+    "dense_embeddings": false,
+    "path": "data/hive/vector_docs.jsonl",
+    "thread_safe": true
+  },
+  "fabric": {
+    "nodes": 24,
+    "hemispheres": 2,
+    "full_models_per_drone": false,
+    "full_llm_per_buzzer": false
+  },
+  "honesty": {
+    "human_brain_simulation": false,
+    "full_models_per_drone": false,
+    "full_llm_per_buzzer": false,
+    "parallel_means": "ThreadPoolExecutor concurrent clean-slate buzzers; shared disk locks; not N GPU model loads",
+    "what_this_is": "Buzzer hive swarm: parallel ephemeral workers connected to Self Library + dual-hemisphere controllable drones.",
+    "fresh_agent_evolution": true
+  }
+}

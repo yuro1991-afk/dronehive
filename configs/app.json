@@ -1,0 +1,42 @@
+{
+  "schema": "drone.hive.app.v1",
+  "name": "DroneHive",
+  "version": "1.0.0",
+  "product": "Standalone modular AI worker drone swarm",
+  "host": "127.0.0.1",
+  "port": 8765,
+  "lane_default": "fast",
+  "lm_assist_default": "none",
+  "controller_default": "local",
+  "universal_links": {
+    "rest": true,
+    "openai_compat": true,
+    "file_inbox": true,
+    "library": true,
+    "continuous": true,
+    "ollama": true,
+    "webhook_out": true
+  },
+  "paths": {
+    "inbox": "data/app/inbox",
+    "outbox": "data/app/outbox",
+    "links": "data/app/links",
+    "commission": "out/COMMISSION_SEAL.json"
+  },
+  "modularity": {
+    "fabric": "drone.chain.BrainFabric",
+    "hive": "drone.hive.BuzzerHive",
+    "fast_lane": "drone.fast_lane.FastLane",
+    "clean_slate": "drone.clean_slate",
+    "tools": "drone.tools.DroneToolkit",
+    "brain": "drone.ollama_brain",
+    "service": "drone.app.service.DroneHiveService",
+    "api": "drone.app.api",
+    "links": "drone.app.links.LinkRegistry"
+  },
+  "honesty": {
+    "full_models_per_drone": false,
+    "dense_vector_db": false,
+    "commission_requires_evidence": true
+  }
+}

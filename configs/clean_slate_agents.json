@@ -1,0 +1,38 @@
+{
+  "schema": "ai.worker.drone.clean_slate_agent.v2",
+  "upgrade_id": "clean_slate_agents_v2",
+  "enabled": true,
+  "name": "Clean Slate Agents Upgrade",
+  "lifecycle": [
+    "birth_passport",
+    "imprint_work_order",
+    "bind_brain_and_tools",
+    "execute_swarm_unit",
+    "write_hive_and_registry",
+    "memory_recycle_dump",
+    "hard_wipe_audit",
+    "write_NEXT",
+    "death_clear_scratch",
+    "spawn_child_with_parent_lineage"
+  ],
+  "paths": {
+    "passports": "data/hive/clean_slate/passports",
+    "wipe_audits": "data/hive/clean_slate/wipe_audits",
+    "runs": "data/hive/clean_slate/runs",
+    "generation_ledger": "data/hive/clean_slate/generation_ledger.jsonl"
+  },
+  "brain": {
+    "shared_ollama": true,
+    "resolve": "drone.ollama_brain.resolve_top_model",
+    "default": "llama3.1:8b"
+  },
+  "tools": {
+    "all_roles": true,
+    "module": "drone.tools.DroneToolkit"
+  },
+  "honesty": {
+    "clean_slate_means": "no prior task RAM/scratch; durable hive+skills+recycle+library survive",
+    "full_llm_per_agent": false,
+    "parent_scratch_forbidden": true
+  }
+}

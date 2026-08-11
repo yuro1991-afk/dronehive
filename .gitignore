@@ -1,0 +1,67 @@
+# Byte-code / caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# Build / freeze
+build/
+dist/
+*.spec.bak
+pip-wheel-metadata/
+
+# Runtime data (local host — do not publish secrets or work product)
+data/experience/
+data/builds/
+data/skills/
+data/hive/
+data/app/inbox/
+data/app/outbox/
+data/app/links/
+data/workspace/
+data/tool_logs/
+data/corpus/
+data/eval/
+data/train/
+out/
+checkpoints/
+
+# Keep empty tree markers if needed
+!data/**/.gitkeep
+!out/.gitkeep
+
+# Logs / local install
+*.log
+launch.log
+crash.log
+desktop_debug.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Large local release zips (rebuild with scripts/package_release.ps1)
+release/*.zip
+release/*.whl
+!release/.gitkeep

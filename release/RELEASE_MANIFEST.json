@@ -1,0 +1,13 @@
+﻿{
+    "schema":  "drone.hive.release.v1",
+    "app":  "DroneHive",
+    "version":  "1.0.0",
+    "utc":  "2026-08-11T07:15:27Z",
+    "wheel":  [
+                  "dronehive-1.0.0-py3-none-any.whl"
+              ],
+    "zip":  "DroneHive-1.0.0-win64.zip",
+    "exe":  "dist/DroneHive/DroneHive.exe",
+    "exe_bytes":  5857684,
+    "false_green":  0
+}

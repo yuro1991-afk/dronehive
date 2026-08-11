@@ -1,0 +1,98 @@
+{
+  "schema": "ai.worker.drone.brain_fabric.v1",
+  "name": "ai-worker-drone-brain",
+  "honesty": {
+    "full_models_per_drone": false,
+    "human_brain_simulation": false,
+    "what_this_is": "Controllable worker drones with dual-hemisphere daisy chain. Shared Ollama top model + real tool belt. Learn from builds."
+  },
+  "tools": {
+    "enabled_default": true,
+    "sandbox": "data/workspace/<task_id>",
+    "artifacts": "out/artifacts/<task_id>",
+    "all_roles_use_tools": true
+  },
+  "ollama": {
+    "config": "configs/ollama_top.json",
+    "default_model": "llama3.1:8b",
+    "shared_one_backend": true,
+    "note": "gemma4:12b installed but empty responses on BOSS — auto-probe picks working top"
+  },
+  "machine": {
+    "target_vram_gb": 12,
+    "max_parallel_active": 3,
+    "max_parallel_with_lm": 1,
+    "shared_weight_body": true
+  },
+  "commanders": {
+    "allowed": ["ollama", "gemini", "spacexai", "xai", "grok", "local"],
+    "human_viewer_chat": false,
+    "require_controller_header": true
+  },
+  "hemispheres": {
+    "left": {
+      "id": "L",
+      "role": "analytic_serial",
+      "nodes": [
+        "L01_intake",
+        "L02_parse",
+        "L03_plan",
+        "L04_decompose",
+        "L05_tool",
+        "L06_execute",
+        "L07_verify",
+        "L08_log",
+        "L09_refine",
+        "L10_package",
+        "L11_handoff",
+        "L12_seal"
+      ]
+    },
+    "right": {
+      "id": "R",
+      "role": "holistic_parallel",
+      "nodes": [
+        "R01_context",
+        "R02_retrieve",
+        "R03_pattern",
+        "R04_risk",
+        "R05_consistency",
+        "R06_critic",
+        "R07_revise",
+        "R08_memory",
+        "R09_evolve",
+        "R10_pack",
+        "R11_handoff",
+        "R12_seal"
+      ]
+    }
+  },
+  "callosum": {
+    "id": "CALLOSUM",
+    "packet_fields": ["from", "to", "goal", "evidence", "next", "veto", "skill_tags"]
+  },
+  "learning": {
+    "mode": "experience_plus_skill_stats",
+    "smarter_means": [
+      "more build traces stored",
+      "skill scores rise on success",
+      "retrieval prefers past wins for similar goals",
+      "chain routes toward higher-skill nodes"
+    ],
+    "not_yet": [
+      "full online gradient fine-tune of a 0.5B body on every build (optional later)"
+    ],
+    "level_curve": {
+      "xp_per_success": 10,
+      "xp_per_partial": 3,
+      "xp_per_fail": 1,
+      "level_base_xp": 50
+    }
+  },
+  "paths": {
+    "experience": "data/experience",
+    "skills": "data/skills",
+    "builds": "data/builds",
+    "out": "out"
+  }
+}

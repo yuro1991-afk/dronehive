@@ -1,0 +1,36 @@
+{
+  "schema": "ai.worker.drone.ollama_top.v1",
+  "host": "http://127.0.0.1:11434",
+  "default_model": "llama3.1:8b",
+  "preference": [
+    "llama3.1:8b",
+    "qwen2.5-coder:7b",
+    "qwen2.5:7b",
+    "mistral:7b",
+    "gemma4:12b",
+    "qwen2.5:3b",
+    "llama3.2:3b",
+    "ai-smarts:latest"
+  ],
+  "host_note": "2026-08-11 BOSS: gemma4:12b installed (~7GB) but chat returns empty content — not used as top until fixed. Working top = llama3.1:8b.",
+  "num_predict": 192,
+  "temperature": 0.2,
+  "lm_roles": [
+    "plan",
+    "pattern",
+    "execute",
+    "critic",
+    "revise",
+    "refine",
+    "evolve",
+    "seal"
+  ],
+  "tools_all_roles": true,
+  "max_parallel_with_lm": 1,
+  "probe_before_use": true,
+  "honesty": {
+    "shared_one_backend": true,
+    "full_model_per_drone": false,
+    "top_means": "best installed model that returns non-empty chat on this host"
+  }
+}
