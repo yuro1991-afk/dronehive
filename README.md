@@ -18,7 +18,7 @@ Two swarm systems share one work-order imprint law:
 ### A) From source (recommended for development)
 
 ```powershell
-git clone https://github.com/yuro1/dronehive.git
+git clone https://github.com/yuro1991-afk/dronehive.git
 cd dronehive
 
 # Python 3.10+ on PATH (or use full path to python.exe)
@@ -196,12 +196,12 @@ See [`.env.example`](.env.example).
 Suggested repo name: **`dronehive`**.  
 Create GitHub repo → push → optional Release attach `release\DroneHive-*-win64.zip`.
 
+**Live repo:** https://github.com/yuro1991-afk/dronehive
+
 ```powershell
-# first publish (example)
-git init
-git add .
-git commit -m "DroneHive 1.0.0 — installable modular swarm app"
-gh repo create dronehive --public --source=. --remote=origin --push
+git clone https://github.com/yuro1991-afk/dronehive.git
+cd dronehive
+.\INSTALL.bat
 ```
 
 ---

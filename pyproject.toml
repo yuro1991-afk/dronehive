@@ -45,10 +45,10 @@ dev = ["customtkinter>=5.2.0", "pyinstaller>=6.0", "build", "wheel"]
 all = ["customtkinter>=5.2.0"]
 
 [project.urls]
-Homepage = "https://github.com/yuro1/dronehive"
-Documentation = "https://github.com/yuro1/dronehive#readme"
-Repository = "https://github.com/yuro1/dronehive"
-Issues = "https://github.com/yuro1/dronehive/issues"
+Homepage = "https://github.com/yuro1991-afk/dronehive"
+Documentation = "https://github.com/yuro1991-afk/dronehive#readme"
+Repository = "https://github.com/yuro1991-afk/dronehive"
+Issues = "https://github.com/yuro1991-afk/dronehive/issues"
 
 [project.scripts]
 dronehive = "drone.app.cli:main"
