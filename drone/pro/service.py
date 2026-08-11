@@ -21,7 +21,7 @@ class DroneHiveProService(DroneHiveService):
     """Extends v1 service with Pro free-form agent + richer brain path."""
 
     edition = "pro"
-    version = "2.0.0"
+    version = "2.1.0"
 
     def health(self) -> dict[str, Any]:
         base = super().health()
@@ -68,7 +68,7 @@ class DroneHiveProService(DroneHiveService):
         seal = {
             "schema": "drone.hive.pro.run.v1",
             "edition": "pro",
-            "version": "2.0.0",
+            "version": "2.1.0",
             "status": agent.get("status"),
             "false_green": 0,
             "utc": _utc(),
@@ -79,6 +79,7 @@ class DroneHiveProService(DroneHiveService):
                 "user_command",
                 "pro_free_form_tool_agent",
                 "optional_hive_followup" if also_hive else "agent_only",
+                "ai_bus_two_way_sync",
             ],
             "seal_path": agent.get("seal_path"),
             "evidence": agent.get("evidence") or [],
@@ -86,6 +87,36 @@ class DroneHiveProService(DroneHiveService):
             "units": 1 + (int(hive_seal.get("units") or 0) if hive_seal else 0),
             "peak_parallel_observed": (hive_seal or {}).get("peak_parallel_observed") or 1,
         }
+        # Two-way AI bus: read surfaces for goal + write pro result to all channels
+        try:
+            from drone.ai_bus import AIBus
+
+            bus = AIBus(self.root)
+            duplex = bus.full_duplex(
+                goal,
+                unit_id=str(agent.get("task_id") or "pro"),
+                result={
+                    "status": seal.get("status"),
+                    "goal": goal,
+                    "buzzer_id": str(agent.get("task_id") or "pro"),
+                    "summary": f"pro_run {seal.get('status')}",
+                    "evidence": seal.get("evidence") or [],
+                    "seal_path": agent.get("seal_path"),
+                    "codex_used": False,
+                },
+            )
+            seal["ai_bus"] = {
+                "ok": duplex.get("status") in {"GREEN", "PARTIAL"},
+                "status": duplex.get("status"),
+                "two_way_count": (duplex.get("connections") or {}).get("two_way_count"),
+                "path": duplex.get("path"),
+                "inbound_ok": (duplex.get("inbound") or {}).get("ok"),
+                "outbound_ok": (duplex.get("outbound") or {}).get("ok"),
+                "false_green": 0,
+            }
+        except Exception as e:
+            seal["ai_bus"] = {"ok": False, "error": str(e), "false_green": 0}
+
         out = self.root / "out" / "PRO_RUN_LAST.json"
         out.write_text(json.dumps(seal, indent=2), encoding="utf-8")
         seal["report_path"] = str(out)

@@ -71,3 +71,7 @@ release/*.whl
 target/
 **/target/
 
+
+# Local model weights / GGUF (never ship)
+models/
+

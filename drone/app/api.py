@@ -9,6 +9,16 @@ Universal surface:
   POST /api/v1/task      {"goal","lane","lm_assist","controller"}
   POST /api/v1/fast      {"goal"}
   POST /api/v1/hive      {"goals":[],"cycles","workers","lane"}
+  POST /api/v1/handoff   {"goal","mode","lane","workers","notes"}  # Grok cowork
+  GET  /api/v1/lanes     live lane status for e2e cowork
+  GET  /api/v1/cowork/collect
+  GET  /api/v1/super-llms        Super LLMs roster status
+  POST /api/v1/super-llms/route  {"goal","role"}
+  POST /api/v1/super-llms/chat   {"prompt","model","role"}
+  GET  /api/v1/seer              Future Seer status
+  POST /api/v1/seer/hot          keep lanes hot + jane/ever
+  POST /api/v1/seer/type         {"text"} typeahead speculate
+  POST /api/v1/seer/commit       {"text","mode","auto"}
   POST /api/v1/inbox/process
   POST /v1/chat/completions  OpenAI-compatible shim
 """
@@ -96,6 +106,18 @@ def make_handler(state: _AppState):
             if path == "/api/v1/links/probe":
                 self._send(200, state.links.probe_all())
                 return
+            if path in {"/api/v1/lanes", "/api/lanes"}:
+                self._send(200, state.service.lanes_live())
+                return
+            if path in {"/api/v1/cowork/collect", "/api/cowork/collect"}:
+                self._send(200, state.service.collect_cowork(max_n=20))
+                return
+            if path in {"/api/v1/super-llms", "/api/super-llms"}:
+                self._send(200, state.service.super_llms_status())
+                return
+            if path in {"/api/v1/seer", "/api/seer"}:
+                self._send(200, state.service.seer_status())
+                return
             if path.startswith("/static/"):
                 rel = path[len("/static/") :]
                 f = state.root / "static" / rel
@@ -156,6 +178,76 @@ def make_handler(state: _AppState):
 
             if path in {"/api/v1/inbox/process", "/api/inbox/process"}:
                 self._send(200, state.service.process_inbox(max_n=int(data.get("max") or 10)))
+                return
+
+            if path in {"/api/v1/handoff", "/api/handoff"}:
+                goal = (data.get("goal") or data.get("prompt") or data.get("command") or "").strip()
+                if not goal:
+                    self._send(400, {"error": "goal required", "false_green": 0})
+                    return
+                report = state.service.handoff(
+                    goal,
+                    mode=str(data.get("mode") or "fast"),
+                    lane=data.get("lane"),
+                    workers=int(data.get("workers") or 2),
+                    cycles=int(data.get("cycles") or 2),
+                    lm_assist=str(data.get("lm_assist") or "none"),
+                    controller=str(data.get("controller") or "grok"),
+                    notes=str(data.get("notes") or ""),
+                    context_paths=data.get("context_paths")
+                    if isinstance(data.get("context_paths"), list)
+                    else None,
+                    continuous_task_id=data.get("continuous_task_id"),
+                    goals=data.get("goals") if isinstance(data.get("goals"), list) else None,
+                    wait=bool(data.get("wait", True)),
+                )
+                code = 200 if report.get("status") in {"GREEN", "OPEN", "PARTIAL"} else 500
+                self._send(code, report)
+                return
+
+            if path in {"/api/v1/super-llms/route", "/api/super-llms/route"}:
+                goal = str(data.get("goal") or data.get("prompt") or "").strip()
+                self._send(200, state.service.super_llms_route(goal, role=data.get("role")))
+                return
+
+            if path in {"/api/v1/super-llms/chat", "/api/super-llms/chat"}:
+                prompt = str(data.get("prompt") or data.get("goal") or "").strip()
+                if not prompt:
+                    self._send(400, {"error": "prompt required", "false_green": 0})
+                    return
+                report = state.service.super_llms_chat(
+                    prompt, model=data.get("model"), role=data.get("role")
+                )
+                code = 200 if report.get("status") == "GREEN" else 500
+                self._send(code, report)
+                return
+
+            if path in {"/api/v1/seer/hot", "/api/seer/hot"}:
+                self._send(200, state.service.seer_hot())
+                return
+
+            if path in {"/api/v1/seer/type", "/api/seer/type"}:
+                text = str(data.get("text") or data.get("partial") or data.get("prompt") or "").strip()
+                if not text:
+                    self._send(400, {"error": "text required", "false_green": 0})
+                    return
+                report = state.service.seer_type(text)
+                code = 200 if report.get("status") in {"GREEN", "PARTIAL", "WAIT"} else 500
+                self._send(code, report)
+                return
+
+            if path in {"/api/v1/seer/commit", "/api/seer/commit"}:
+                text = str(data.get("text") or data.get("prompt") or data.get("goal") or "").strip()
+                if not text:
+                    self._send(400, {"error": "text required", "false_green": 0})
+                    return
+                report = state.service.seer_commit(
+                    text,
+                    mode=str(data.get("mode") or "preview"),
+                    allow_auto=bool(data.get("auto") or data.get("allow_auto")),
+                )
+                code = 200 if report.get("status") in {"GREEN", "PARTIAL"} else 500
+                self._send(code, report)
                 return
 
             if path == "/v1/chat/completions":

@@ -1,14 +1,18 @@
-# DroneHive 2.0.0
+# DroneHive 2.1.0
 
 Installable modular AI worker-drone swarm for Windows (Python 3.10+).
 
 | Surface | Command | Role |
 |---------|---------|------|
 | **TUI (primary)** | `START_TUI.bat` or `dronehive-tui` | Lean Rust console — input + progress |
-| **Python CLI** | `dronehive` / `python -m drone …` | Health, pro agent, hive, fabric |
+| **Python CLI** | `dronehive` / `python -m drone …` | Health, pro agent, hive, fabric, seer, mesh, handoff |
+| **Super LLMs** | `START_SUPER_LLMS.bat` / `python -m drone super-llms` | All safe full models on 12GB |
+| **Future Seer** | `START_SEER.bat` / `python -m drone seer` | Multi-model typeahead |
 | **Tk Pro UI** | `START_PRO.bat` | Optional; not primary |
 
 **No admin / no UAC required.**
+
+**Cloud default (Build-with-AI):** SpaceXAI via `XAI_API_KEY` → `https://api.x.ai/v1` · model `grok-4.5`. Local muscle: Ollama on RTX 3060.
 
 ## Quick start
 

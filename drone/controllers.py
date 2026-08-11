@@ -13,7 +13,13 @@ from .protocol import ALLOWED_CONTROLLERS, ControllerIdentity
 def make_lm_fn(kind: str) -> Callable[[str], str] | None:
     """
     Optional shared LM assist for drones (ONE Ollama server, not per-drone model).
-    kind=ollama → top installed Ollama model for general notes.
+
+    kinds:
+      ollama|top|local-ollama → top working model
+      full|dual|all|resources  → full roster access (route + any tag via tools)
+      coding|code              → coding route model
+      fast|reason|ops|seal     → role-routed model from super_llms
+      spacexai|xai|grok|gemini → cloud API (keys required)
     """
     k = (kind or "none").lower().strip()
     if k in {"none", "off", ""}:
@@ -22,6 +28,28 @@ def make_lm_fn(kind: str) -> Callable[[str], str] | None:
         from .ollama_brain import make_top_lm_fn
 
         return make_top_lm_fn(num_predict=int(os.environ.get("DRONE_NUM_PREDICT", "192")))
+    if k in {"full", "dual", "all", "resources", "llm", "super"}:
+        # Full LLM resource access — top callable + full_llm_access flag;
+        # agents also get llm_list/chat/generate tools for any roster tag.
+        from .llm_resources import make_full_access_lm_fn
+
+        return make_full_access_lm_fn(
+            num_predict=int(os.environ.get("DRONE_NUM_PREDICT", "192"))
+        )
+    if k in {"coding", "code", "coder"}:
+        from .llm_resources import make_full_access_lm_fn
+
+        return make_full_access_lm_fn(
+            role="coding",
+            num_predict=int(os.environ.get("DRONE_NUM_PREDICT", "256")),
+        )
+    if k in {"fast", "reason", "ops", "seal", "smarts", "embed"}:
+        from .llm_resources import make_full_access_lm_fn
+
+        return make_full_access_lm_fn(
+            role=k,
+            num_predict=int(os.environ.get("DRONE_NUM_PREDICT", "192")),
+        )
     if k in {"spacexai", "xai", "grok"}:
         return _spacexai_fn
     if k == "gemini":
@@ -125,10 +153,33 @@ def describe_controllers() -> dict[str, Any]:
         ollama = brain_status()
     except Exception as e:
         ollama = {"error": str(e)}
+    llm_res: dict[str, Any] = {}
+    try:
+        from .llm_resources import LLMResources
+
+        llm_res = LLMResources().status()
+    except Exception as e:
+        llm_res = {"error": str(e)}
     return {
         "allowed": sorted(ALLOWED_CONTROLLERS),
         "human_viewer_chat": False,
         "note": "Drones accept tasks only from AI controllers, not viewer chat training.",
         "ollama_brain": ollama,
-        "tools": "wired — every role uses DroneToolkit when enable_tools=True",
+        "llm_resources": llm_res,
+        "lm_fn_kinds": [
+            "none",
+            "ollama",
+            "top",
+            "full",
+            "dual",
+            "all",
+            "coding",
+            "fast",
+            "reason",
+            "ops",
+            "seal",
+            "spacexai",
+            "gemini",
+        ],
+        "tools": "wired — llm_list/route/chat/generate + ollama_generate (full roster)",
     }

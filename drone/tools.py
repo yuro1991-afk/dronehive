@@ -37,19 +37,76 @@ _SHELL_ALLOW = re.compile(
 
 
 class DroneToolkit:
-    """Shared tools for every drone node in a fabric run. Thread-safe for L||R."""
+    """Shared tools for every drone node in a fabric run. Thread-safe for L||R.
 
-    def __init__(self, root: Path, task_id: str = "") -> None:
+    tool_scope: if set, drone only sees/uses those tools (task-exact pack).
+    board_wave_id: shared hive board for cold knowledge + live chunks.
+    """
+
+    ALL_TOOLS = [
+        "list_tools",
+        "write_text",
+        "read_text",
+        "list_dir",
+        "append_log",
+        "write_json",
+        "hash_text",
+        "run_shell",
+        "run_python",
+        "copy_to_artifacts",
+        "package_manifest",
+        "library_status",
+        "knowledge_imprint",
+        "knowledge_sources",
+        "do_lesson",
+        "knowledge_chunk",
+        "ai_bus_status",
+        "ai_bus_read",
+        "ai_bus_write",
+        "ai_bus_sync",
+        "board_publish",
+        "board_get",
+        "board_list",
+        "ollama_generate",
+        "llm_list",
+        "llm_route",
+        "llm_chat",
+        "llm_generate",
+        "run_host_diagnostics",
+        "write_and_smoke_python",
+        "clone_app",
+    ]
+
+    def __init__(
+        self,
+        root: Path,
+        task_id: str = "",
+        *,
+        tool_scope: list[str] | None = None,
+        board_wave_id: str | None = None,
+        unit_id: str = "",
+    ) -> None:
         self.root = Path(root)
         self.task_id = task_id or "notask"
         self.workspace = self.root / "data" / "workspace" / self.task_id
         self.artifacts = self.root / "out" / "artifacts" / self.task_id
         self.logs = self.root / "data" / "tool_logs"
+        self.tool_scope = list(tool_scope) if tool_scope else None
+        self.board_wave_id = board_wave_id or ""
+        self.unit_id = unit_id or task_id or ""
         self._lock = threading.RLock()
         with root_lock(self.root):
             for d in (self.workspace, self.artifacts, self.logs):
                 d.mkdir(parents=True, exist_ok=True)
         self.calls: list[dict[str, Any]] = []
+
+    def _allowed(self, name: str) -> bool:
+        if not self.tool_scope:
+            return True
+        # list_tools always allowed for discovery of scoped pack
+        if name == "list_tools":
+            return True
+        return name in self.tool_scope
 
     def _record(self, name: str, ok: bool, **extra: Any) -> dict[str, Any]:
         row = {"tool": name, "ok": ok, "utc": _utc(), **extra}
@@ -58,24 +115,17 @@ class DroneToolkit:
         return row
 
     def list_tools(self) -> dict[str, Any]:
-        names = [
+        names = list(self.tool_scope) if self.tool_scope else list(self.ALL_TOOLS)
+        if "list_tools" not in names:
+            names = ["list_tools"] + names
+        return self._record(
             "list_tools",
-            "write_text",
-            "read_text",
-            "list_dir",
-            "append_log",
-            "write_json",
-            "hash_text",
-            "run_shell",
-            "run_python",
-            "copy_to_artifacts",
-            "package_manifest",
-            "library_status",
-            "ollama_generate",
-            "run_host_diagnostics",
-            "write_and_smoke_python",
-        ]
-        return self._record("list_tools", True, tools=names, count=len(names))
+            True,
+            tools=names,
+            count=len(names),
+            scoped=bool(self.tool_scope),
+            board_wave_id=self.board_wave_id or None,
+        )
 
     def _safe_rel(self, rel: str, base: Path | None = None) -> Path:
         base = base or self.workspace
@@ -268,6 +318,286 @@ class DroneToolkit:
         except Exception as e:
             return self._record("package_manifest", False, error=str(e))
 
+    def clone_app(
+        self,
+        dest: str = "",
+        *,
+        include_data: bool = False,
+        banner: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Clone the entire DroneHive application source tree for test / cowork.
+
+        Writes:
+          - dest/  (full code clone: drone/, configs/, pyproject, README, launchers, docs)
+          - workspace/CLONE_APP/ mirror
+          - dest/MANIFEST.json + dest/CLONE_SEAL.json
+          - artifacts/CLONE_SEAL.json
+
+        Honesty: files are real on-disk copies of this project's source.
+        false_green:0 — GREEN only if file_count > 0 and seal written.
+        """
+        try:
+            src_root = self.root.resolve()
+            if dest and str(dest).strip():
+                dest_path = Path(dest).expanduser()
+                if not dest_path.is_absolute():
+                    dest_path = (self.workspace / dest).resolve()
+                else:
+                    dest_path = dest_path.resolve()
+            else:
+                dest_path = (
+                    Path(r"G:\AI-Home\projects\dronehive-clone-test")
+                ).resolve()
+
+            # Allow dest under project OR dedicated clone project path
+            allowed_prefixes = [
+                str(src_root),
+                str(Path(r"G:\AI-Home\projects\dronehive-clone-test").resolve()),
+                str((src_root / "out" / "dronehive-app-clone").resolve()),
+            ]
+            dest_s = str(dest_path)
+            if not any(dest_s == p or dest_s.startswith(p + os.sep) for p in allowed_prefixes):
+                # still allow under workspace
+                if not dest_s.startswith(str(self.workspace.resolve())):
+                    return self._record(
+                        "clone_app",
+                        False,
+                        error=f"dest not allowed: {dest_path}",
+                        allowed=allowed_prefixes,
+                    )
+
+            dest_path.mkdir(parents=True, exist_ok=True)
+            ws_clone = self.workspace / "CLONE_APP"
+            ws_clone.mkdir(parents=True, exist_ok=True)
+
+            # What to clone (source code + app surface — not huge data/build/dist)
+            copy_specs: list[tuple[str, str]] = [
+                ("drone", "drone"),
+                ("configs", "configs"),
+                ("docs", "docs"),
+                ("static", "static"),
+                ("scripts", "scripts"),
+                ("apps", "apps"),
+                ("pyproject.toml", "pyproject.toml"),
+                ("requirements.txt", "requirements.txt"),
+                ("requirements-desktop.txt", "requirements-desktop.txt"),
+                ("README.md", "README.md"),
+                ("LICENSE", "LICENSE"),
+                ("MANIFEST.in", "MANIFEST.in"),
+                ("CONTRIBUTING.md", "CONTRIBUTING.md"),
+                ("DroneHive.spec", "DroneHive.spec"),
+            ]
+            # Windows launchers
+            for name in sorted(src_root.glob("*.bat")) + sorted(src_root.glob("*.cmd")) + sorted(
+                src_root.glob("*.ps1")
+            ):
+                if name.is_file():
+                    copy_specs.append((name.name, name.name))
+
+            if include_data:
+                copy_specs.append(("data/app/seed", "data/app/seed"))
+
+            skip_dir_names = {
+                "__pycache__",
+                ".git",
+                "target",
+                "node_modules",
+                ".pytest_cache",
+                "build",
+                "dist",
+            }
+            copied: list[dict[str, Any]] = []
+            errors: list[str] = []
+
+            def _should_skip(path: Path) -> bool:
+                return any(part in skip_dir_names for part in path.parts)
+
+            for rel_src, rel_dst in copy_specs:
+                s = src_root / rel_src
+                if not s.exists():
+                    errors.append(f"missing_src:{rel_src}")
+                    continue
+                d = dest_path / rel_dst
+                w = ws_clone / rel_dst
+                try:
+                    if s.is_dir():
+                        if d.exists():
+                            shutil.rmtree(d)
+                        if w.exists():
+                            shutil.rmtree(w)
+
+                        def _ignore(directory: str, names: list[str]) -> set[str]:
+                            return {n for n in names if n in skip_dir_names}
+
+                        shutil.copytree(s, d, ignore=_ignore)
+                        shutil.copytree(s, w, ignore=_ignore)
+                        n_files = sum(1 for p in d.rglob("*") if p.is_file() and not _should_skip(p))
+                        copied.append(
+                            {
+                                "src": str(s),
+                                "dest": str(d),
+                                "kind": "dir",
+                                "files": n_files,
+                            }
+                        )
+                    else:
+                        d.parent.mkdir(parents=True, exist_ok=True)
+                        w.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(s, d)
+                        shutil.copy2(s, w)
+                        if banner and s.suffix.lower() in {".py", ".md", ".toml", ".json"}:
+                            # stamp clone header on python packages only for __init__ / README
+                            if s.name in {"README.md"} or s.name == "__init__.py":
+                                try:
+                                    text = d.read_text(encoding="utf-8", errors="replace")
+                                    stamp = (
+                                        f"# CLONE of DroneHive — written by drone tools "
+                                        f"task={self.task_id} utc={_utc()}\n"
+                                    )
+                                    if not text.startswith("# CLONE of DroneHive"):
+                                        d.write_text(stamp + text, encoding="utf-8")
+                                        w.write_text(stamp + text, encoding="utf-8")
+                                except OSError:
+                                    pass
+                        copied.append(
+                            {
+                                "src": str(s),
+                                "dest": str(d),
+                                "kind": "file",
+                                "bytes": d.stat().st_size,
+                            }
+                        )
+                except Exception as e:
+                    errors.append(f"{rel_src}:{e}")
+
+            # File inventory
+            file_rows: list[dict[str, Any]] = []
+            total_bytes = 0
+            for p in dest_path.rglob("*"):
+                if not p.is_file():
+                    continue
+                if _should_skip(p.relative_to(dest_path)):
+                    continue
+                try:
+                    sz = p.stat().st_size
+                except OSError:
+                    sz = 0
+                total_bytes += sz
+                file_rows.append(
+                    {
+                        "path": str(p),
+                        "rel": str(p.relative_to(dest_path)).replace("\\", "/"),
+                        "bytes": sz,
+                    }
+                )
+            file_rows.sort(key=lambda r: r["rel"])
+
+            py_count = sum(1 for r in file_rows if r["rel"].endswith(".py"))
+            ok = len(file_rows) > 0 and py_count >= 10
+            status = "GREEN" if ok else ("PARTIAL" if file_rows else "RED")
+
+            manifest = {
+                "schema": "drone.toolkit.clone_app.manifest.v1",
+                "utc": _utc(),
+                "task_id": self.task_id,
+                "source_root": str(src_root),
+                "clone_root": str(dest_path),
+                "workspace_mirror": str(ws_clone),
+                "file_count": len(file_rows),
+                "py_count": py_count,
+                "total_bytes": total_bytes,
+                "files": file_rows,
+                "copied_specs": copied,
+                "errors": errors,
+                "false_green": 0,
+            }
+            seal = {
+                "schema": "drone.toolkit.clone_app.seal.v1",
+                "status": status,
+                "false_green": 0,
+                "utc": _utc(),
+                "task_id": self.task_id,
+                "tool": "clone_app",
+                "source_root": str(src_root),
+                "clone_root": str(dest_path),
+                "workspace_mirror": str(ws_clone),
+                "file_count": len(file_rows),
+                "py_count": py_count,
+                "total_bytes": total_bytes,
+                "copied_entries": len(copied),
+                "errors": errors[:20],
+                "evidence": [
+                    str(dest_path),
+                    str(dest_path / "MANIFEST.json"),
+                    str(dest_path / "CLONE_SEAL.json"),
+                    str(ws_clone),
+                    str(self.artifacts / "CLONE_SEAL.json"),
+                ],
+                "sample_py": [r["rel"] for r in file_rows if r["rel"].endswith(".py")][:40],
+                "honesty": {
+                    "method": "drone_toolkit_clone_app",
+                    "source_is_live_app": True,
+                    "not_llm_rewritten_line_by_line": True,
+                    "drones_wrote_files_via_tool": True,
+                },
+            }
+
+            man_path = dest_path / "MANIFEST.json"
+            seal_path = dest_path / "CLONE_SEAL.json"
+            man_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            seal_path.write_text(json.dumps(seal, indent=2), encoding="utf-8")
+            # mirrors
+            (ws_clone / "MANIFEST.json").write_text(
+                json.dumps(manifest, indent=2), encoding="utf-8"
+            )
+            (ws_clone / "CLONE_SEAL.json").write_text(
+                json.dumps(seal, indent=2), encoding="utf-8"
+            )
+            self.artifacts.mkdir(parents=True, exist_ok=True)
+            art_seal = self.artifacts / "CLONE_SEAL.json"
+            art_seal.write_text(json.dumps(seal, indent=2), encoding="utf-8")
+            art_man = self.artifacts / "MANIFEST.json"
+            art_man.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            # project out convenience
+            out_seal = self.root / "out" / "DRONE_CLONE_APP_SEAL.json"
+            out_seal.write_text(json.dumps(seal, indent=2), encoding="utf-8")
+
+            # README clone note
+            readme_note = dest_path / "CLONE_README.md"
+            readme_note.write_text(
+                f"# DroneHive App Clone (drone-written)\n\n"
+                f"- **task_id:** `{self.task_id}`\n"
+                f"- **utc:** {_utc()}\n"
+                f"- **source:** `{src_root}`\n"
+                f"- **clone:** `{dest_path}`\n"
+                f"- **files:** {len(file_rows)} ({py_count} .py)\n"
+                f"- **bytes:** {total_bytes}\n"
+                f"- **status:** {status}\n"
+                f"- **false_green:** 0\n\n"
+                f"Produced by drone tool `clone_app` for Grok↔drone e2e cowork test.\n"
+                f"This is a full source clone of the live DroneHive app (not empty stubs).\n",
+                encoding="utf-8",
+            )
+
+            return self._record(
+                "clone_app",
+                ok,
+                status=status,
+                path=str(dest_path),
+                seal_path=str(seal_path),
+                manifest_path=str(man_path),
+                file_count=len(file_rows),
+                py_count=py_count,
+                total_bytes=total_bytes,
+                workspace_mirror=str(ws_clone),
+                out_seal=str(out_seal),
+                errors=errors[:10],
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("clone_app", False, error=str(e), false_green=0)
+
     def library_status(self) -> dict[str, Any]:
         try:
             from .library_bridge import LibraryBridge
@@ -277,6 +607,448 @@ class DroneToolkit:
         except Exception as e:
             return self._record("library_status", False, error=str(e))
 
+    def knowledge_imprint(self, goal: str = "") -> dict[str, Any]:
+        """
+        MAX multi-source knowledge imprint (config-driven).
+        If board_wave_id set, also publishes cold refs to shared hive board.
+        """
+        if not self._allowed("knowledge_imprint"):
+            return self._record(
+                "knowledge_imprint", False, error="tool not in scope", false_green=0
+            )
+        try:
+            from .knowledge_imprint import (
+                build_knowledge_imprint,
+                knowledge_prompt_block,
+                write_knowledge_to_library,
+            )
+
+            pack = build_knowledge_imprint(self.root, goal or self.task_id)
+            meta = {
+                "ok": pack.get("ok"),
+                "mode": pack.get("mode"),
+                "ms": pack.get("ms"),
+                "classify": pack.get("classify"),
+                "cold_mode": pack.get("cold_mode"),
+                "sources_hit": pack.get("sources_hit"),
+                "do_queue": pack.get("do_queue") or [],
+                "lessons": [
+                    {
+                        "id": x.get("id"),
+                        "title": x.get("title"),
+                        "path": x.get("md_path"),
+                        "head": (x.get("head") or "")[:200],
+                        "chars": x.get("chars"),
+                        "cold_ref": x.get("cold_ref", False),
+                    }
+                    for x in ((pack.get("school") or {}).get("lessons") or [])
+                ],
+                "instai": [
+                    {
+                        "id": x.get("lesson_id"),
+                        "title": x.get("title"),
+                        "path": x.get("path"),
+                    }
+                    for x in ((pack.get("instai") or {}).get("lessons") or [])
+                ],
+                "codex_ok": (pack.get("codex") or {}).get("ok"),
+                "false_green": 0,
+            }
+            # optional shared board cold pack for wave
+            if self.board_wave_id:
+                try:
+                    from .hive_board import HiveBoard
+
+                    board = HiveBoard(self.root)
+                    cold = board.ensure_cold_pack(self.board_wave_id, goal or self.task_id)
+                    meta["board_wave_id"] = self.board_wave_id
+                    meta["board_chunk_id"] = cold.get("chunk_id")
+                    meta["board_ok"] = cold.get("ok")
+                except Exception as be:
+                    meta["board_error"] = str(be)
+
+            w1 = self.write_json("knowledge_imprint.json", meta)
+            prompt = knowledge_prompt_block(pack)
+            w2 = self.write_text("knowledge_prompt.md", prompt)
+            lib = write_knowledge_to_library(self.root, pack, buzzer_id=self.task_id)
+            return self._record(
+                "knowledge_imprint",
+                bool(pack.get("ok")),
+                ms=pack.get("ms"),
+                mode=pack.get("mode"),
+                sources_hit=pack.get("sources_hit"),
+                lessons=(pack.get("school") or {}).get("lessons_imprinted"),
+                instai=(pack.get("instai") or {}).get("matched"),
+                within_budget=(pack.get("latency") or {}).get("within_budget"),
+                cold_mode=pack.get("cold_mode"),
+                meta_path=w1.get("path"),
+                prompt_path=w2.get("path"),
+                library_note=lib.get("path"),
+                f_mirror_ok=lib.get("f_mirror_ok"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("knowledge_imprint", False, error=str(e), false_green=0)
+
+    def knowledge_sources(self) -> dict[str, Any]:
+        if not self._allowed("knowledge_sources"):
+            return self._record(
+                "knowledge_sources", False, error="tool not in scope", false_green=0
+            )
+        try:
+            from .knowledge_imprint import knowledge_sources_status
+
+            st = knowledge_sources_status()
+            return self._record(
+                "knowledge_sources",
+                True,
+                mode=st.get("mode"),
+                instai_lesson_count=st.get("instai_lesson_count"),
+                sources=st.get("sources"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("knowledge_sources", False, error=str(e), false_green=0)
+
+    def ai_bus_status(self) -> dict[str, Any]:
+        if not self._allowed("ai_bus_status"):
+            return self._record("ai_bus_status", False, error="tool not in scope", false_green=0)
+        try:
+            from .ai_bus import AIBus
+
+            report = AIBus(self.root).connect_status()
+            return self._record(
+                "ai_bus_status",
+                bool(report.get("two_way_count", 0) > 0),
+                two_way_count=report.get("two_way_count"),
+                all_two_way=report.get("all_two_way"),
+                channel_count=report.get("channel_count"),
+                status_path=report.get("status_path"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("ai_bus_status", False, error=str(e), false_green=0)
+
+    def ai_bus_read(self, channel: str = "self_library", query: str = "") -> dict[str, Any]:
+        if not self._allowed("ai_bus_read"):
+            return self._record("ai_bus_read", False, error="tool not in scope", false_green=0)
+        try:
+            from .ai_bus import AIBus
+
+            hit = AIBus(self.root).read(channel, query=query or self.task_id, limit=6)
+            # stash slim result
+            self.write_json(f"ai_bus_read_{channel}.json", {
+                "ok": hit.get("ok"),
+                "channel": channel,
+                "path": hit.get("path"),
+                "keys": list((hit.get("data") or {}).keys()) if isinstance(hit.get("data"), dict) else None,
+                "false_green": 0,
+            })
+            return self._record(
+                "ai_bus_read",
+                bool(hit.get("ok") or hit.get("probe_ok")),
+                channel=channel,
+                path=hit.get("path"),
+                error=hit.get("error"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("ai_bus_read", False, error=str(e), false_green=0)
+
+    def ai_bus_write(
+        self,
+        channel: str = "self_library",
+        notes: str = "",
+        status: str = "PARTIAL",
+    ) -> dict[str, Any]:
+        if not self._allowed("ai_bus_write"):
+            return self._record("ai_bus_write", False, error="tool not in scope", false_green=0)
+        try:
+            from .ai_bus import AIBus
+
+            payload = {
+                "notes": notes,
+                "status": status,
+                "summary": notes or f"write via {self.task_id}",
+                "text": notes or f"ai_bus_write from {self.task_id}",
+                "evidence_paths": [str(self.workspace)],
+                "tags": ["ai_bus", "tool"],
+            }
+            hit = AIBus(self.root).write(
+                channel,
+                payload,
+                unit_id=self.task_id,
+                goal=notes or self.task_id,
+            )
+            return self._record(
+                "ai_bus_write",
+                bool(hit.get("ok")),
+                channel=channel,
+                path=hit.get("path"),
+                bus_outbox=hit.get("bus_outbox"),
+                error=hit.get("error"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("ai_bus_write", False, error=str(e), false_green=0)
+
+    def ai_bus_sync(self, goal: str = "", direction: str = "full") -> dict[str, Any]:
+        """direction: read | write | full"""
+        if not self._allowed("ai_bus_sync"):
+            return self._record("ai_bus_sync", False, error="tool not in scope", false_green=0)
+        try:
+            from .ai_bus import AIBus
+
+            bus = AIBus(self.root)
+            d = (direction or "full").lower()
+            g = goal or self.task_id
+            if d == "read":
+                hit = bus.sync_read(g)
+            elif d == "write":
+                hit = bus.sync_write(
+                    {
+                        "status": "PARTIAL",
+                        "goal": g,
+                        "summary": f"sync write {self.task_id}",
+                        "buzzer_id": self.task_id,
+                        "evidence_paths": [str(self.workspace)],
+                    },
+                    unit_id=self.task_id,
+                    goal=g,
+                )
+            else:
+                hit = bus.full_duplex(
+                    g,
+                    unit_id=self.task_id,
+                    result={
+                        "status": "PARTIAL",
+                        "goal": g,
+                        "buzzer_id": self.task_id,
+                        "summary": f"full duplex {self.task_id}",
+                        "evidence_paths": [str(self.workspace)],
+                    },
+                )
+            self.write_json("ai_bus_sync.json", hit)
+            return self._record(
+                "ai_bus_sync",
+                bool(hit.get("ok") or hit.get("status") in {"GREEN", "PARTIAL"}),
+                direction=d,
+                path=hit.get("path"),
+                two_way_count=(hit.get("connections") or {}).get("two_way_count"),
+                ok_count=hit.get("ok_count") or (hit.get("inbound") or {}).get("ok_count"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("ai_bus_sync", False, error=str(e), false_green=0)
+
+    def do_lesson(
+        self,
+        lesson_id: str = "",
+        notes: str = "",
+        evidence_rel: str = "",
+    ) -> dict[str, Any]:
+        if not self._allowed("do_lesson"):
+            return self._record("do_lesson", False, error="tool not in scope", false_green=0)
+        try:
+            from .knowledge_imprint import do_lesson as _do
+
+            lesson: dict[str, Any] = {"id": lesson_id or "unknown", "title": lesson_id}
+            meta_path = self.workspace / "knowledge_imprint.json"
+            if meta_path.is_file():
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                for item in meta.get("do_queue") or []:
+                    if str(item.get("id")) == str(lesson_id) or (
+                        lesson_id and lesson_id in str(item.get("title") or "")
+                    ):
+                        lesson = item
+                        break
+                if lesson.get("id") in (None, "unknown", ""):
+                    for item in meta.get("instai") or []:
+                        if str(item.get("id")) == str(lesson_id):
+                            lesson = {
+                                "kind": "instai",
+                                "id": item.get("id"),
+                                "title": item.get("title"),
+                                "path": item.get("path"),
+                            }
+                            break
+                    for item in meta.get("lessons") or []:
+                        if str(item.get("id")) == str(lesson_id):
+                            lesson = {
+                                "kind": "curriculum",
+                                "id": item.get("id"),
+                                "title": item.get("title"),
+                                "path": item.get("path"),
+                            }
+                            break
+            evidence: list[str] = []
+            if evidence_rel:
+                ep = self._safe_rel(evidence_rel)
+                if ep.is_file():
+                    evidence.append(str(ep))
+            note_rel = (
+                f"lesson_study_{re.sub(r'[^a-zA-Z0-9._-]+', '_', lesson_id or 'x')[:40]}.md"
+            )
+            self.write_text(
+                note_rel,
+                f"# Lesson study\n\nid: {lesson.get('id')}\ntitle: {lesson.get('title')}\n"
+                f"notes: {notes}\nutc: {_utc()}\n",
+            )
+            evidence.append(str(self.workspace / note_rel))
+            result = _do(
+                self.root,
+                lesson=lesson,
+                buzzer_id=self.task_id,
+                notes=notes,
+                evidence_paths=evidence,
+            )
+            self.write_json("last_lesson_done.json", result)
+            return self._record(
+                "do_lesson",
+                bool(result.get("ok")),
+                status=result.get("status"),
+                progress_path=result.get("progress_path"),
+                lesson_id=result.get("lesson_id"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("do_lesson", False, error=str(e), false_green=0)
+
+    def knowledge_chunk(self, md_path: str = "", max_chars: int = 1600) -> dict[str, Any]:
+        """Load one lesson body into the shared board (once) — hive reuse."""
+        if not self._allowed("knowledge_chunk"):
+            return self._record(
+                "knowledge_chunk", False, error="tool not in scope", false_green=0
+            )
+        if not md_path:
+            return self._record("knowledge_chunk", False, error="md_path required")
+        if not self.board_wave_id:
+            # no board: still load once into workspace, no multi-drone share
+            try:
+                p = Path(md_path)
+                if not p.is_file():
+                    return self._record(
+                        "knowledge_chunk", False, error="missing", path=md_path
+                    )
+                text = p.read_text(encoding="utf-8", errors="replace")[: max(200, int(max_chars))]
+                rel = "lesson_chunk.md"
+                w = self.write_text(rel, text)
+                return self._record(
+                    "knowledge_chunk",
+                    True,
+                    path=w.get("path"),
+                    chars=len(text),
+                    shared_board=False,
+                    false_green=0,
+                )
+            except Exception as e:
+                return self._record("knowledge_chunk", False, error=str(e))
+        try:
+            from .hive_board import HiveBoard
+
+            board = HiveBoard(self.root)
+            got = board.load_lesson_body(
+                self.board_wave_id,
+                md_path=md_path,
+                max_chars=int(max_chars) or 1600,
+                unit_id=self.unit_id,
+            )
+            if got.get("ok") and got.get("body"):
+                self.write_text("lesson_chunk.md", str(got["body"]))
+            return self._record(
+                "knowledge_chunk",
+                bool(got.get("ok")),
+                chunk_id=got.get("chunk_id"),
+                cache_hit=got.get("cache_hit"),
+                chars=got.get("chars"),
+                md_path=md_path,
+                board_wave_id=self.board_wave_id,
+                shared_board=True,
+                false_green=0,
+                error=got.get("error"),
+            )
+        except Exception as e:
+            return self._record("knowledge_chunk", False, error=str(e), false_green=0)
+
+    def board_publish(self, kind: str = "note", payload: Any = None) -> dict[str, Any]:
+        """Publish a live hive-think chunk for the wave."""
+        if not self._allowed("board_publish"):
+            return self._record(
+                "board_publish", False, error="tool not in scope", false_green=0
+            )
+        if not self.board_wave_id:
+            return self._record(
+                "board_publish", False, error="no board_wave_id on toolkit"
+            )
+        try:
+            from .hive_board import HiveBoard
+
+            board = HiveBoard(self.root)
+            pub = board.publish(
+                self.board_wave_id,
+                kind=str(kind or "note"),
+                payload=payload if payload is not None else {"note": "empty"},
+                unit_id=self.unit_id,
+                tags=["live", "hive_think"],
+            )
+            return self._record(
+                "board_publish",
+                bool(pub.get("ok")),
+                chunk_id=pub.get("chunk_id"),
+                kind=kind,
+                board_wave_id=self.board_wave_id,
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("board_publish", False, error=str(e))
+
+    def board_get(self, chunk_id: str = "") -> dict[str, Any]:
+        if not self._allowed("board_get"):
+            return self._record("board_get", False, error="tool not in scope")
+        if not self.board_wave_id or not chunk_id:
+            return self._record(
+                "board_get", False, error="need board_wave_id and chunk_id"
+            )
+        try:
+            from .hive_board import HiveBoard
+
+            got = HiveBoard(self.root).get_chunk(self.board_wave_id, chunk_id)
+            return self._record(
+                "board_get",
+                bool(got.get("ok")),
+                chunk_id=chunk_id,
+                kind=got.get("kind"),
+                payload_preview=str(got.get("payload"))[:500],
+                false_green=0,
+                error=got.get("error"),
+            )
+        except Exception as e:
+            return self._record("board_get", False, error=str(e))
+
+    def board_list(self, kind: str = "", limit: int = 20) -> dict[str, Any]:
+        if not self._allowed("board_list"):
+            return self._record("board_list", False, error="tool not in scope")
+        if not self.board_wave_id:
+            return self._record("board_list", False, error="no board_wave_id")
+        try:
+            from .hive_board import HiveBoard
+
+            listed = HiveBoard(self.root).list_chunks(
+                self.board_wave_id,
+                kind=kind or None,
+                limit=int(limit) or 20,
+            )
+            return self._record(
+                "board_list",
+                bool(listed.get("ok")),
+                count=listed.get("count"),
+                chunks=listed.get("chunks"),
+                board_wave_id=self.board_wave_id,
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("board_list", False, error=str(e))
+
     def ollama_generate(
         self,
         prompt: str,
@@ -284,45 +1056,148 @@ class DroneToolkit:
         model: str | None = None,
         num_predict: int = 256,
         timeout_s: int = 120,
+        role: str | None = None,
     ) -> dict[str, Any]:
-        """Call shared Ollama top model (one backend)."""
-        import urllib.error
-        import urllib.request
-
-        host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
-        model = model or os.environ.get("DRONE_OLLAMA_MODEL", "gemma4:12b")
-        body = json.dumps(
-            {
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "num_predict": int(num_predict),
-                    "temperature": 0.2,
-                },
-            }
-        ).encode("utf-8")
+        """Call any installed Ollama model via full LLM resources (shared backend)."""
         try:
-            req = urllib.request.Request(
-                f"{host.rstrip('/')}/api/generate",
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
+            from .llm_resources import LLMResources
+
+            res = LLMResources(self.root).generate(
+                prompt,
+                model=model,
+                role=role,
+                num_predict=int(num_predict),
+                timeout_s=int(timeout_s),
             )
-            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            text = str(data.get("response", "")).strip()
+            ok = res.get("status") == "GREEN" and bool(res.get("text"))
             return self._record(
                 "ollama_generate",
-                bool(text),
-                model=model,
-                text=text[:4000],
-                eval_count=data.get("eval_count"),
+                ok,
+                model=res.get("model") or model,
+                text=str(res.get("text") or "")[:4000],
+                ms=res.get("ms"),
+                backend=res.get("backend") or "ollama",
+                error=res.get("error"),
+                false_green=0,
             )
         except Exception as e:
             return self._record(
-                "ollama_generate", False, model=model, error=str(e)
+                "ollama_generate", False, model=model, error=str(e), false_green=0
             )
+
+    def llm_list(self, *, include_cloud: bool = True) -> dict[str, Any]:
+        """List full LLM resources available to this agent (all installed + routes)."""
+        try:
+            from .llm_resources import LLMResources
+
+            cat = LLMResources(self.root).list_all(include_cloud=include_cloud)
+            return self._record(
+                "llm_list",
+                bool(cat.get("reachable")),
+                installed_count=cat.get("installed_count"),
+                full_llms_safe_count=cat.get("full_llms_safe_count"),
+                full_llms_safe=cat.get("full_llms_safe"),
+                callable_tags=cat.get("callable_tags"),
+                routing=cat.get("routing"),
+                top_model=cat.get("top_model"),
+                code_worker=cat.get("code_worker"),
+                cloud_api_routes=cat.get("cloud_api_routes"),
+                agent_access=cat.get("agent_access"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("llm_list", False, error=str(e), false_green=0)
+
+    def llm_route(self, goal: str = "", *, role: str | None = None) -> dict[str, Any]:
+        """Route goal/role → best safe full LLM tag."""
+        try:
+            from .llm_resources import LLMResources
+
+            r = LLMResources(self.root).route(goal or "", role=role)
+            return self._record(
+                "llm_route",
+                bool(r.get("model")),
+                model=r.get("model"),
+                role=r.get("role"),
+                routing_table=r.get("routing_table"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("llm_route", False, error=str(e), false_green=0)
+
+    def llm_chat(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        role: str | None = None,
+        num_predict: int = 256,
+        timeout_s: int = 180,
+        allow_cloud: bool = False,
+    ) -> dict[str, Any]:
+        """Chat any roster/installed model (or cloud API id). Full LLM access tool."""
+        try:
+            from .llm_resources import LLMResources
+
+            res = LLMResources(self.root).chat(
+                prompt,
+                model=model,
+                role=role,
+                num_predict=int(num_predict),
+                timeout_s=int(timeout_s),
+                allow_cloud=bool(allow_cloud),
+            )
+            ok = res.get("status") == "GREEN" and bool(res.get("text"))
+            return self._record(
+                "llm_chat",
+                ok,
+                model=res.get("model") or model,
+                text=str(res.get("text") or "")[:4000],
+                ms=res.get("ms"),
+                status=res.get("status"),
+                backend=res.get("backend"),
+                error=res.get("error"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("llm_chat", False, error=str(e), false_green=0)
+
+    def llm_generate(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        role: str | None = None,
+        num_predict: int = 256,
+        timeout_s: int = 180,
+        allow_cloud: bool = False,
+    ) -> dict[str, Any]:
+        """Generate via full LLM resources (any tag under single-flight lock)."""
+        try:
+            from .llm_resources import LLMResources
+
+            res = LLMResources(self.root).generate(
+                prompt,
+                model=model,
+                role=role,
+                num_predict=int(num_predict),
+                timeout_s=int(timeout_s),
+                allow_cloud=bool(allow_cloud),
+            )
+            ok = res.get("status") == "GREEN" and bool(res.get("text"))
+            return self._record(
+                "llm_generate",
+                ok,
+                model=res.get("model") or model,
+                text=str(res.get("text") or "")[:4000],
+                ms=res.get("ms"),
+                status=res.get("status"),
+                backend=res.get("backend"),
+                error=res.get("error"),
+                false_green=0,
+            )
+        except Exception as e:
+            return self._record("llm_generate", False, error=str(e), false_green=0)
 
     def dump_call_log(self) -> Path:
         path = self.logs / f"{self.task_id}_calls.json"

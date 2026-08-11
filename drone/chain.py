@@ -138,14 +138,27 @@ class BrainFabric:
                 toolkit=None,
             )
 
-    def _bind_toolkit(self, task_id: str) -> DroneToolkit | None:
-        """Attach one shared toolkit to every node for this task."""
+    def _bind_toolkit(
+        self,
+        task_id: str,
+        *,
+        tool_scope: list[str] | None = None,
+        board_wave_id: str | None = None,
+        unit_id: str = "",
+    ) -> DroneToolkit | None:
+        """Attach one shared toolkit to every node for this task (scoped tools + board)."""
         if not self.enable_tools:
             self._active_toolkit = None
             for n in self.nodes.values():
                 n.toolkit = None
             return None
-        toolkit = DroneToolkit(self.root, task_id=task_id)
+        toolkit = DroneToolkit(
+            self.root,
+            task_id=task_id,
+            tool_scope=tool_scope,
+            board_wave_id=board_wave_id,
+            unit_id=unit_id or task_id,
+        )
         self._active_toolkit = toolkit
         for n in self.nodes.values():
             n.toolkit = toolkit
@@ -297,18 +310,60 @@ class BrainFabric:
         payload: dict[str, Any] | None,
         parallel_hemispheres: bool,
     ) -> dict[str, Any]:
+        # Pull last core-critic insights into payload (engine-facing memory)
+        payload = dict(payload or {})
+        try:
+            from .core_critic import read_engine_insights
+
+            insights = read_engine_insights(self.root)
+            if insights:
+                payload["core_critic_insights"] = insights
+        except Exception:
+            pass
+
         task = TaskEnvelope(
             goal=goal,
             controller=ControllerIdentity(kind=controller_kind, name=controller_name),
             domain=domain,
             skill_tags=skill_tags or ["build"],
-            payload=payload or {},
+            payload=payload,
         )
         task.validate()
 
         t0 = time.perf_counter()
         before = self.memory.fabric_stats()
-        toolkit = self._bind_toolkit(task.task_id)
+        # Task-exact tool pack + shared hive board (cold knowledge, live chunks)
+        tool_scope = payload.get("tool_scope") or payload.get("tools")
+        if isinstance(tool_scope, dict):
+            tool_scope = tool_scope.get("tools")
+        if tool_scope is not None and not isinstance(tool_scope, list):
+            tool_scope = None
+        board_wave_id = payload.get("board_wave_id") or payload.get("wave_id")
+        unit_id = str(
+            payload.get("unit_id")
+            or payload.get("buzzer_id")
+            or task.task_id
+        )
+        toolkit = self._bind_toolkit(
+            task.task_id,
+            tool_scope=list(tool_scope) if tool_scope else None,
+            board_wave_id=str(board_wave_id) if board_wave_id else None,
+            unit_id=unit_id,
+        )
+        # Live hive-think: announce unit start on board
+        if toolkit and board_wave_id:
+            try:
+                toolkit.board_publish(
+                    "unit_start",
+                    {
+                        "task_id": task.task_id,
+                        "goal": (goal or "")[:200],
+                        "tools_n": len(tool_scope or []),
+                        "scoped": bool(tool_scope),
+                    },
+                )
+            except Exception:
+                pass
 
         if parallel_hemispheres:
             with ThreadPoolExecutor(max_workers=2) as pool:
@@ -379,6 +434,7 @@ class BrainFabric:
 
         mode = "swarm_parallel_hemispheres" if parallel_hemispheres else "serial_chain"
         lm_model = getattr(self.lm_fn, "model", None) if self.lm_fn else None
+        code_model = getattr(self.code_lm_fn, "model", None) if self.code_lm_fn else None
         report = {
             "status": "GREEN" if ok else "RED",
             "false_green": 0,
@@ -395,6 +451,7 @@ class BrainFabric:
             "workspace": str(toolkit.workspace) if toolkit else None,
             "artifacts_dir": str(toolkit.artifacts) if toolkit else None,
             "ollama_model": lm_model,
+            "code_worker_model": code_model,
             "parallel_hemispheres": parallel_hemispheres,
             "duration_ms": round(ms, 2),
             "build_path": str(build_path),
@@ -420,6 +477,64 @@ class BrainFabric:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(report, indent=2), encoding="utf-8")
         report["report_path"] = str(out)
+
+        # Silent observer LLM: informed by drone work + OS — never user-facing
+        try:
+            from .observer import inform
+
+            obs = inform(
+                self.root,
+                event="fabric_run_complete",
+                drone_report=report,
+            )
+            report["observer"] = {
+                "status": obs.get("status"),
+                "model": obs.get("model"),
+                "user_facing": False,
+                "informed": obs.get("informed"),
+                "summary": (obs.get("observation") or {}).get("summary")
+                if isinstance(obs.get("observation"), dict)
+                else None,
+                "path": str(self.root / "data" / "observer" / "LATEST.json"),
+            }
+        except Exception as e:
+            report["observer"] = {
+                "status": "RED",
+                "error": str(e),
+                "user_facing": False,
+            }
+
+        # Third LLM: core critic — critical thinking for the engine (not user chat)
+        try:
+            from .core_critic import critique_once, read_engine_insights
+
+            crit = critique_once(
+                self.root,
+                event="fabric_run_complete",
+                extra={"task_id": report.get("task_id"), "status": report.get("status")},
+            )
+            cobj = crit.get("critique") if isinstance(crit.get("critique"), dict) else {}
+            report["core_critic"] = {
+                "status": crit.get("status"),
+                "model": crit.get("model"),
+                "user_facing": False,
+                "engine_facing": True,
+                "engine_health": cobj.get("engine_health"),
+                "verdict": cobj.get("verdict"),
+                "engine_actions": cobj.get("engine_actions"),
+                "false_green_risk": cobj.get("false_green_risk"),
+                "path": str(self.root / "data" / "core_critic" / "LATEST.json"),
+                "insights": read_engine_insights(self.root),
+            }
+        except Exception as e:
+            report["core_critic"] = {
+                "status": "RED",
+                "error": str(e),
+                "user_facing": False,
+                "engine_facing": True,
+            }
+
+        out.write_text(json.dumps(report, indent=2), encoding="utf-8")
         return report
 
     def stats(self) -> dict[str, Any]:

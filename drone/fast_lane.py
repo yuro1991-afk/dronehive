@@ -188,6 +188,10 @@ class FastLane:
         controller_name: str = "fast",
         domain: str = "build",
         skill_tags: list[str] | None = None,
+        tool_scope: list[str] | None = None,
+        board_wave_id: str | None = None,
+        unit_id: str = "",
+        payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         goal = (goal or "").strip()
         if not goal:
@@ -202,18 +206,33 @@ class FastLane:
         if "fast_lane" not in tags:
             tags.append("fast_lane")
 
+        pl = dict(payload or {})
+        pl["lane"] = "fast"
+        if tool_scope:
+            pl["tool_scope"] = list(tool_scope)
+        if board_wave_id:
+            pl["board_wave_id"] = board_wave_id
+        if unit_id:
+            pl["unit_id"] = unit_id
+
         task = TaskEnvelope(
             goal=goal,
             controller=ControllerIdentity(kind=controller_kind, name=controller_name),
             domain=domain,
             skill_tags=tags,
-            payload={"lane": "fast"},
+            payload=pl,
         )
         task.validate()
 
         t0 = time.perf_counter()
         before = self.memory.fabric_stats()
-        toolkit = DroneToolkit(self.root, task_id=f"fast_{task.task_id}")
+        toolkit = DroneToolkit(
+            self.root,
+            task_id=f"fast_{task.task_id}",
+            tool_scope=list(tool_scope) if tool_scope else None,
+            board_wave_id=board_wave_id,
+            unit_id=unit_id or f"fast_{task.task_id}",
+        )
         self._toolkit = toolkit
         for n in self.nodes.values():
             n.toolkit = toolkit
@@ -268,6 +287,21 @@ class FastLane:
         lm_model = getattr(self.lm_fn, "model", None) if self.lm_fn else None
 
         # lite seal (not full clean-slate)
+        # live board progress (optional)
+        if board_wave_id:
+            try:
+                toolkit.board_publish(
+                    "fast_done",
+                    {
+                        "goal": goal[:200],
+                        "status": "GREEN" if all_ok else "RED",
+                        "nodes": len(chain),
+                        "tool_calls": len(toolkit.calls),
+                    },
+                )
+            except Exception:
+                pass
+
         lite_seal = {
             "schema": "ai.worker.drone.fast_lane_seal.v1",
             "status": "GREEN" if all_ok else "RED",
@@ -277,6 +311,9 @@ class FastLane:
             "task_id": task.task_id,
             "goal": goal,
             "nodes_run": len(chain),
+            "tool_scope_n": len(tool_scope or []),
+            "board_wave_id": board_wave_id,
+            "packet_recycle_ready": True,
             "tool_calls": len(toolkit.calls),
             "duration_ms": round(ms, 2),
             "workspace": str(toolkit.workspace),

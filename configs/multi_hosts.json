@@ -1,0 +1,276 @@
+{
+  "schema": "drone.multi_hosts.v1",
+  "name": "DroneHive Multi-Host Face",
+  "version": "1.0.0",
+  "law": [
+    "ONLY the FACE model speaks to the user",
+    "All other models/hosts produce INTERNAL briefs only",
+    "Workers never write user-facing prose in final channel",
+    "false_green: 0 \u2014 SKIP host if down, do not invent replies",
+    "12GB: at most one heavy worker full model; face is shared Ollama",
+    "AI2AI hosts: strip human weights; FACE only speaks human"
+  ],
+  "face": {
+    "id": "face",
+    "model": "fx-face",
+    "role": "user_facing_speaker",
+    "backend": "ollama",
+    "num_predict": 384,
+    "temperature": 0.3,
+    "system": "CHANNEL=FACE. TARGET=USER. Clear complete sentences. No inventing worker evidence. User is boss. false_green:0. ROLE=worker. Internal brief for FACE only. Synthesize AI2AI briefs. Do not invent evidence. User is boss.",
+    "flagship": true,
+    "super_mesh": true
+  },
+  "hosts": [
+    {
+      "id": "ollama_fast",
+      "kind": "ollama",
+      "model": "llama3.2:3b",
+      "role": "intent_scout",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 45
+    },
+    {
+      "id": "ollama_coder",
+      "kind": "ollama",
+      "model": "qwen2.5-coder:7b",
+      "role": "code_worker",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 90,
+      "when": [
+        "code",
+        "python",
+        "bug",
+        "refactor",
+        "function",
+        "api",
+        "build"
+      ]
+    },
+    {
+      "id": "ollama_ops",
+      "kind": "ollama",
+      "model": "qwen2.5:7b",
+      "role": "ops_worker",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 75,
+      "when": [
+        "ops",
+        "status",
+        "deploy",
+        "health",
+        "log"
+      ]
+    },
+    {
+      "id": "ollama_smarts",
+      "kind": "ollama",
+      "model": "ai-smarts:latest",
+      "role": "ontology_worker",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 45,
+      "when": [
+        "ontology",
+        "knowledge",
+        "smarts",
+        "ai"
+      ]
+    },
+    {
+      "id": "ollama_seal",
+      "kind": "ollama",
+      "model": "mistral:7b",
+      "role": "critic_worker",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 75,
+      "when": [
+        "review",
+        "critic",
+        "seal",
+        "check"
+      ]
+    },
+    {
+      "id": "hermes",
+      "kind": "hermes",
+      "exe": "C:\\Users\\yuro1\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe",
+      "role": "hermes_agent",
+      "internal_only": true,
+      "enabled": true,
+      "port": 9119,
+      "timeout_s": 120,
+      "whisper_cmd": "C:\\Users\\yuro1\\Tools\\hermes-whisper.cmd"
+    },
+    {
+      "id": "openclaw",
+      "kind": "openclaw",
+      "exe": "C:\\Users\\yuro1\\AppData\\Roaming\\npm\\openclaw.cmd",
+      "role": "openclaw_agent",
+      "internal_only": true,
+      "enabled": true,
+      "gateway_port": 19100,
+      "agent": "supercell",
+      "model": "ollama/qwen2.5-coder:7b",
+      "timeout_s": 120
+    },
+    {
+      "id": "opencode",
+      "kind": "opencode",
+      "exe": "C:\\Users\\yuro1\\AppData\\Roaming\\npm\\opencode.cmd",
+      "role": "opencode_agent",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 90
+    },
+    {
+      "id": "supercell_muscle",
+      "kind": "muscle",
+      "exe": "G:\\AI-Center\\agents\\super-cell-4\\bridges\\muscle_dispatch.py",
+      "role": "jane_helper",
+      "internal_only": true,
+      "enabled": true,
+      "expert": "probe",
+      "timeout_s": 120
+    },
+    {
+      "id": "drones",
+      "kind": "drone_fast",
+      "role": "drone_worker",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 90,
+      "when": [
+        "build",
+        "drone",
+        "hive",
+        "fabric",
+        "task"
+      ]
+    },
+    {
+      "id": "everest",
+      "kind": "everest",
+      "exe": "G:\\AI-Center\\bridge\\everest\\cli.py",
+      "role": "everest_status",
+      "internal_only": true,
+      "enabled": true,
+      "timeout_s": 30
+    },
+    {
+      "id": "spacexai",
+      "kind": "spacexai",
+      "role": "cloud_worker",
+      "internal_only": true,
+      "enabled": true,
+      "opt_in": true,
+      "timeout_s": 60
+    },
+    {
+      "id": "gemini",
+      "kind": "gemini",
+      "role": "cloud_worker",
+      "internal_only": true,
+      "enabled": true,
+      "opt_in": true,
+      "timeout_s": 60
+    }
+  ],
+  "fanout": {
+    "max_workers": 2,
+    "always": [
+      "ollama_fast"
+    ],
+    "pick_by_keywords": true,
+    "include_hosts_if_up": [
+      "hermes",
+      "openclaw",
+      "opencode",
+      "everest"
+    ],
+    "heavy_limit": 1,
+    "hotwired_to_face": true,
+    "speed_mode": true
+  },
+  "hotwire": {
+    "enabled": true,
+    "module": "drone.face_hotwire.FaceHotwire",
+    "cli": "python -m drone face hot|go|exec|chat",
+    "law": "ALL models/hosts \u2192 FACE only; precision exec path"
+  },
+  "ai_protocol": "configs/ai_protocol.json",
+  "m2m_fleet": {
+    "enabled": true,
+    "prefix": "m2m-",
+    "base": "qwen2.5:0.5b",
+    "catalog": "configs\\m2m_clones_0.5b.json",
+    "count_catalog": 20,
+    "count_installed": 20,
+    "tags": [
+      "m2m-bus",
+      "m2m-callosum",
+      "m2m-code",
+      "m2m-critic",
+      "m2m-drone",
+      "m2m-flash",
+      "m2m-left",
+      "m2m-map",
+      "m2m-ops",
+      "m2m-parse",
+      "m2m-plan",
+      "m2m-probe",
+      "m2m-rank",
+      "m2m-recall",
+      "m2m-right",
+      "m2m-route",
+      "m2m-scout",
+      "m2m-seal",
+      "m2m-tool",
+      "m2m-watch"
+    ],
+    "talks_to_user": false,
+    "channel": "AI2AI",
+    "strict_m2m": true
+  },
+  "super_mesh": {
+    "enabled": true,
+    "hardwire": "G:\\AI-Home\\projects\\ai-worker-drone-0.5b\\data\\super_mesh\\HARDWIRE.json",
+    "config": "configs/super_mesh.json",
+    "roster": "configs/m2m_node_roster.json",
+    "m2m_live": [
+      "m2m-probe",
+      "m2m-scout",
+      "m2m-map",
+      "m2m-plan",
+      "m2m-tool",
+      "m2m-code",
+      "m2m-parse",
+      "m2m-ops",
+      "m2m-left",
+      "m2m-seal",
+      "m2m-flash",
+      "m2m-recall",
+      "m2m-right",
+      "m2m-critic",
+      "m2m-rank",
+      "m2m-watch",
+      "m2m-route",
+      "m2m-drone",
+      "m2m-bus",
+      "m2m-callosum"
+    ],
+    "flagships": {
+      "reason": "fx-reason",
+      "face": "fx-face"
+    },
+    "edges": 32,
+    "strict_m2m": true,
+    "idle_until_called": true,
+    "idle_hardwire": "GREEN",
+    "idle_count": 20
+  }
+}

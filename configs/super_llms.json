@@ -1,0 +1,318 @@
+{
+  "schema": "drone.super_llms.v1",
+  "name": "DroneHive Super LLMs",
+  "version": "1.0.0",
+  "host": "BOSS",
+  "endpoint": "http://127.0.0.1:11434",
+  "gpu": {
+    "name": "RTX 3060",
+    "vram_mib": 12288,
+    "max_loaded_full": 1,
+    "max_loaded_total": 2,
+    "num_parallel": 3,
+    "keep_alive": "45m",
+    "kv_cache": "q8_0",
+    "gpu_overhead_mib": 384
+  },
+  "safety_law": [
+    "Only models that fit 12GB with headroom",
+    "Never load two 7B+ full LLMs at once for heavy work",
+    "One active FULL chat model; optional one tiny/embed warm",
+    "Smoke must return non-empty content before GREEN roster",
+    "Cloud tags are opt-in (no local VRAM) \u2014 not default active",
+    "false_green: 0"
+  ],
+  "tiers": {
+    "S": "tiny/fast \u2014 safe warm alongside one full",
+    "A": "full 7\u20138B \u2014 primary full LLMs (solo active)",
+    "B": "tight 12B \u2014 only when VRAM free of other fulls",
+    "E": "embedding \u2014 not chat full LLM",
+    "C": "cloud/remote \u2014 opt-in, no local VRAM",
+    "X": "unsafe on this host (too large / known broken)"
+  },
+  "roster": [
+    {
+      "id": "llama31-8b",
+      "tag": "llama3.1:8b",
+      "tier": "A",
+      "role": [
+        "general",
+        "reason",
+        "default",
+        "seal"
+      ],
+      "params": "8B",
+      "est_vram_mib": 5500,
+      "safe": true,
+      "full_llm": true,
+      "notes": "Working top on BOSS"
+    },
+    {
+      "id": "qwen25-coder-7b",
+      "tag": "qwen2.5-coder:7b",
+      "tier": "A",
+      "role": [
+        "coding",
+        "forge",
+        "draft"
+      ],
+      "params": "7.6B",
+      "est_vram_mib": 5200,
+      "safe": true,
+      "full_llm": true,
+      "notes": "Code worker"
+    },
+    {
+      "id": "qwen25-7b",
+      "tag": "qwen2.5:7b",
+      "tier": "A",
+      "role": [
+        "ops",
+        "probe",
+        "general_alt"
+      ],
+      "params": "7.6B",
+      "est_vram_mib": 5200,
+      "safe": true,
+      "full_llm": true
+    },
+    {
+      "id": "mistral-7b",
+      "tag": "mistral:7b",
+      "tier": "A",
+      "role": [
+        "ops",
+        "seal_alt",
+        "general_alt"
+      ],
+      "params": "7.2B",
+      "est_vram_mib": 5000,
+      "safe": true,
+      "full_llm": true
+    },
+    {
+      "id": "gemma4-12b",
+      "tag": "gemma4:12b",
+      "tier": "B",
+      "role": [
+        "reason_heavy",
+        "tight_top"
+      ],
+      "params": "11.9B",
+      "est_vram_mib": 7500,
+      "safe": true,
+      "full_llm": true,
+      "notes": "Tight fit; demote if empty chat smoke fails"
+    },
+    {
+      "id": "llama32-3b",
+      "tag": "llama3.2:3b",
+      "tier": "S",
+      "role": [
+        "fast",
+        "probe_light",
+        "lightning"
+      ],
+      "params": "3.2B",
+      "est_vram_mib": 2200,
+      "safe": true,
+      "full_llm": true,
+      "notes": "Full small LLM \u2014 safe warm with one A-tier"
+    },
+    {
+      "id": "qwen25-3b",
+      "tag": "qwen2.5:3b",
+      "tier": "S",
+      "role": [
+        "fast_alt",
+        "lightning"
+      ],
+      "params": "3.1B",
+      "est_vram_mib": 2100,
+      "safe": true,
+      "full_llm": true
+    },
+    {
+      "id": "ai-smarts",
+      "tag": "ai-smarts:latest",
+      "tier": "S",
+      "role": [
+        "ontology",
+        "smarts",
+        "fast"
+      ],
+      "params": "3.2B",
+      "est_vram_mib": 2200,
+      "safe": true,
+      "full_llm": true,
+      "notes": "AI Smarts custom model"
+    },
+    {
+      "id": "nomic-embed",
+      "tag": "nomic-embed-text:latest",
+      "tier": "E",
+      "role": [
+        "embed",
+        "rag"
+      ],
+      "params": "137M",
+      "est_vram_mib": 400,
+      "safe": true,
+      "full_llm": false,
+      "notes": "Embedding only \u2014 not chat"
+    },
+    {
+      "id": "minimax-m3-cloud",
+      "tag": "minimax-m3:cloud",
+      "tier": "C",
+      "role": [
+        "cloud",
+        "opt_in"
+      ],
+      "params": "cloud",
+      "est_vram_mib": 0,
+      "safe": true,
+      "full_llm": true,
+      "opt_in": true,
+      "notes": "Cloud via Ollama \u2014 no local VRAM; opt-in only"
+    }
+  ],
+  "routing": {
+    "default": "fx-face",
+    "coding": "qwen2.5-coder:7b",
+    "reason": "fx-reason",
+    "reason_heavy": "gemma4:12b",
+    "fast": "llama3.2:3b",
+    "ops": "qwen2.5:7b",
+    "seal": "mistral:7b",
+    "embed": "nomic-embed-text:latest",
+    "smarts": "ai-smarts:latest",
+    "cloud": "minimax-m3:cloud",
+    "face": "fx-face",
+    "mesh_conductor": "fx-reason",
+    "m2m_mesh": "super_mesh"
+  },
+  "keywords": {
+    "coding": [
+      "code",
+      "python",
+      "bug",
+      "refactor",
+      "compile",
+      "function",
+      "class",
+      "api"
+    ],
+    "reason": [
+      "why",
+      "analyze",
+      "plan",
+      "design",
+      "architect",
+      "tradeoff"
+    ],
+    "fast": [
+      "quick",
+      "short",
+      "ping",
+      "status",
+      "one line"
+    ],
+    "ops": [
+      "ops",
+      "status",
+      "health",
+      "deploy",
+      "log"
+    ],
+    "embed": [
+      "embed",
+      "vector",
+      "similarity"
+    ],
+    "smarts": [
+      "ontology",
+      "ai smarts",
+      "knowledge pack"
+    ],
+    "cloud": [
+      "cloud",
+      "minimax"
+    ]
+  },
+  "unsafe_local_examples": [
+    "qwen3.6:latest (~23GB \u2014 will not fit 12GB)",
+    "70B+ any quant without offload plan",
+    "dual 8B concurrent chat loads"
+  ],
+  "m2m_fleet": {
+    "enabled": true,
+    "prefix": "m2m-",
+    "base": "qwen2.5:0.5b",
+    "catalog": "configs\\m2m_clones_0.5b.json",
+    "count_catalog": 20,
+    "count_installed": 20,
+    "tags": [
+      "m2m-bus",
+      "m2m-callosum",
+      "m2m-code",
+      "m2m-critic",
+      "m2m-drone",
+      "m2m-flash",
+      "m2m-left",
+      "m2m-map",
+      "m2m-ops",
+      "m2m-parse",
+      "m2m-plan",
+      "m2m-probe",
+      "m2m-rank",
+      "m2m-recall",
+      "m2m-right",
+      "m2m-route",
+      "m2m-scout",
+      "m2m-seal",
+      "m2m-tool",
+      "m2m-watch"
+    ],
+    "talks_to_user": false,
+    "channel": "AI2AI",
+    "strict_m2m": true
+  },
+  "super_mesh": {
+    "enabled": true,
+    "hardwire": "G:\\AI-Home\\projects\\ai-worker-drone-0.5b\\data\\super_mesh\\HARDWIRE.json",
+    "config": "configs/super_mesh.json",
+    "roster": "configs/m2m_node_roster.json",
+    "m2m_live": [
+      "m2m-probe",
+      "m2m-scout",
+      "m2m-map",
+      "m2m-plan",
+      "m2m-tool",
+      "m2m-code",
+      "m2m-parse",
+      "m2m-ops",
+      "m2m-left",
+      "m2m-seal",
+      "m2m-flash",
+      "m2m-recall",
+      "m2m-right",
+      "m2m-critic",
+      "m2m-rank",
+      "m2m-watch",
+      "m2m-route",
+      "m2m-drone",
+      "m2m-bus",
+      "m2m-callosum"
+    ],
+    "flagships": {
+      "reason": "fx-reason",
+      "face": "fx-face"
+    },
+    "edges": 32,
+    "strict_m2m": true,
+    "idle_until_called": true,
+    "idle_hardwire": "GREEN",
+    "idle_count": 20
+  }
+}

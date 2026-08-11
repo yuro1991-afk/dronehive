@@ -126,6 +126,36 @@ class LinkRegistry:
                 "enabled": True,
                 "how": "5-node lite path",
             },
+            {
+                "id": "grok_handoff",
+                "kind": "cowork",
+                "uri": "drone.grok_handoff.GrokDroneHandoff",
+                "enabled": True,
+                "how": (
+                    "Grok e2e cowork: python -m drone handoff lanes|to|collect|e2e · "
+                    "POST /api/v1/handoff · data/app/cowork/"
+                ),
+            },
+            {
+                "id": "super_llms",
+                "kind": "multi_model",
+                "uri": "drone.super_llms.SuperLLMs",
+                "enabled": True,
+                "how": (
+                    "All safe full LLMs: python -m drone super-llms · START_SUPER_LLMS.bat · "
+                    "GET /api/v1/super-llms · route/chat by role"
+                ),
+            },
+            {
+                "id": "future_seer",
+                "kind": "speculative",
+                "uri": "drone.future_seer.FutureSeer",
+                "enabled": True,
+                "how": (
+                    "Typeahead multi-model seer: python -m drone seer · START_SEER.bat · "
+                    "POST /api/v1/seer/type · hot lanes · Jane helpers · Everest"
+                ),
+            },
         ]
         # persist catalog
         cat_path = self.dirs["links"] / "CATALOG.json"

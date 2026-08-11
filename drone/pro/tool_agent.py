@@ -23,6 +23,15 @@ def _utc() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def _chat(role: str, text: str) -> None:
+    """Stream chat lines to TUI (one line each; TUI prefixes filter on CHAT|)."""
+    line = (text or "").replace("\n", " ").strip()
+    if not line:
+        return
+    # flush so Rust TUI sees progress live
+    print(f"CHAT|{role}|{line[:500]}", flush=True)
+
+
 TOOL_CATALOG = [
     {
         "name": "write_text",
@@ -70,9 +79,49 @@ TOOL_CATALOG = [
         "desc": "Build MANIFEST.json of workspace+artifacts",
     },
     {
+        "name": "clone_app",
+        "args": {"dest": "str", "include_data": "bool"},
+        "desc": "Clone ENTIRE DroneHive app source to dest (full code tree + MANIFEST + CLONE_SEAL)",
+    },
+    {
         "name": "library_status",
         "args": {},
         "desc": "Check Grok Self Library / continuous board presence",
+    },
+    {
+        "name": "knowledge_imprint",
+        "args": {"goal": "str"},
+        "desc": "MAX multi-source imprint: curriculum+instai+codex+AI Smarts+ref DB (capped)",
+    },
+    {
+        "name": "knowledge_sources",
+        "args": {},
+        "desc": "Inventory all knowledge surfaces (exists/counts) — no false greens",
+    },
+    {
+        "name": "do_lesson",
+        "args": {"lesson_id": "str", "notes": "str", "evidence_rel": "str"},
+        "desc": "Study/complete a lesson from imprint do_queue; needs notes or evidence for GREEN",
+    },
+    {
+        "name": "ai_bus_status",
+        "args": {},
+        "desc": "Two-way connection matrix for all AI surfaces (read+write health)",
+    },
+    {
+        "name": "ai_bus_read",
+        "args": {"channel": "str", "query": "str"},
+        "desc": "READ one AI channel (self_library|continuous|codex|curriculum|instai|…)",
+    },
+    {
+        "name": "ai_bus_write",
+        "args": {"channel": "str", "notes": "str", "status": "str"},
+        "desc": "WRITE one AI channel (two-way wire out)",
+    },
+    {
+        "name": "ai_bus_sync",
+        "args": {"goal": "str", "direction": "full|read|write"},
+        "desc": "Full duplex sync: read all + write result to all AI surfaces",
     },
     {
         "name": "append_log",
@@ -126,13 +175,20 @@ def _parse_tool_call(text: str) -> dict[str, Any] | None:
         return hit
     m = re.search(r"\{[\s\S]*\}", raw)
     if m:
-        hit = _try(m.group(0))
+        blob = m.group(0)
+        hit = _try(blob)
         if hit:
             return hit
-        # Ollama often emits single-quoted JSON-ish — best-effort fix
-        fixed = m.group(0)
-        fixed = fixed.replace("'", '"')
+        # Ollama often emits single-quoted JSON-ish — careful fix
+        # 1) keys with single quotes: {'tool': ...}
+        fixed = re.sub(r"'(\w+)'\s*:", r'"\1":', blob)
+        # 2) string values still on single quotes (naive but covers proof-note fails)
+        fixed = re.sub(r":\s*'([^']*)'", r': "\1"', fixed)
         hit = _try(fixed)
+        if hit:
+            return hit
+        # last resort: full quote swap (legacy)
+        hit = _try(blob.replace("'", '"'))
         if hit:
             return hit
     return None
@@ -158,9 +214,58 @@ def _dispatch(toolkit: DroneToolkit, name: str, args: dict[str, Any]) -> dict[st
     if name == "copy_to_artifacts":
         return toolkit.copy_to_artifacts(str(args.get("rel_path") or ""))
     if name == "package_manifest":
-        return toolkit.package_manifest({"edition": "pro", "v": "2.0.0"})
+        return toolkit.package_manifest({"edition": "pro", "v": "2.1.0"})
+    if name == "clone_app":
+        return toolkit.clone_app(
+            dest=str(args.get("dest") or r"G:\AI-Home\projects\dronehive-clone-test"),
+            include_data=bool(args.get("include_data")),
+        )
     if name == "library_status":
         return toolkit.library_status()
+    if name == "knowledge_imprint":
+        return toolkit.knowledge_imprint(str(args.get("goal") or ""))
+    if name == "knowledge_sources":
+        return toolkit.knowledge_sources()
+    if name == "do_lesson":
+        return toolkit.do_lesson(
+            lesson_id=str(args.get("lesson_id") or ""),
+            notes=str(args.get("notes") or ""),
+            evidence_rel=str(args.get("evidence_rel") or ""),
+        )
+    if name == "ai_bus_status":
+        return toolkit.ai_bus_status()
+    if name == "ai_bus_read":
+        return toolkit.ai_bus_read(
+            channel=str(args.get("channel") or "self_library"),
+            query=str(args.get("query") or ""),
+        )
+    if name == "ai_bus_write":
+        return toolkit.ai_bus_write(
+            channel=str(args.get("channel") or "self_library"),
+            notes=str(args.get("notes") or ""),
+            status=str(args.get("status") or "PARTIAL"),
+        )
+    if name == "ai_bus_sync":
+        return toolkit.ai_bus_sync(
+            goal=str(args.get("goal") or ""),
+            direction=str(args.get("direction") or "full"),
+        )
+    if name == "knowledge_chunk":
+        return toolkit.knowledge_chunk(
+            str(args.get("md_path") or args.get("path") or ""),
+            max_chars=int(args.get("max_chars") or 1600),
+        )
+    if name == "board_publish":
+        return toolkit.board_publish(
+            str(args.get("kind") or "note"), args.get("payload")
+        )
+    if name == "board_get":
+        return toolkit.board_get(str(args.get("chunk_id") or ""))
+    if name == "board_list":
+        return toolkit.board_list(
+            kind=str(args.get("kind") or ""),
+            limit=int(args.get("limit") or 20),
+        )
     if name == "append_log":
         return toolkit.append_log(str(args.get("line") or ""))
     if name == "done":
@@ -187,7 +292,7 @@ def _heuristic_finish(toolkit: DroneToolkit, goal: str) -> list[dict[str, Any]]:
     steps.append(
         toolkit.write_json(
             f"pro_{safe}_meta.json",
-            {"goal": goal, "edition": "pro", "v": "2.0.0", "utc": _utc()},
+            {"goal": goal, "edition": "pro", "v": "2.1.0", "utc": _utc()},
         )
     )
     code = (
@@ -229,20 +334,82 @@ def run_pro_agent(
             "false_green": 0,
             "error": "empty goal",
             "edition": "pro",
-            "version": "2.0.0",
+            "version": "2.1.0",
         }
 
     finished = False
     final_status = "PARTIAL"
     summary = ""
 
+    _chat("system", f"Pro agent start · task={task_id}")
+    _chat("user", goal)
+
+    # Force full-app clone when Grok handoff asks for DroneHive clone test
+    goal_l = goal.lower()
+    if (
+        "clone" in goal_l
+        and ("dronehive" in goal_l or "drone hive" in goal_l or "entire" in goal_l)
+    ) or "clone_app" in goal_l or "clone test mission" in goal_l:
+        dest = r"G:\AI-Home\projects\dronehive-clone-test"
+        m = re.search(
+            r"(G:\\AI-Home\\projects\\dronehive-clone-test|G:/AI-Home/projects/dronehive-clone-test)",
+            goal,
+            re.I,
+        )
+        if m:
+            dest = m.group(1).replace("/", "\\")
+        _chat("system", f"clone mission detected · clone_app → {dest}")
+        _chat("tool", f"→ clone_app(dest={dest})")
+        clone_res = toolkit.clone_app(dest=dest, include_data=False)
+        ok_c = bool(clone_res.get("ok"))
+        _chat(
+            "tool",
+            f"{'✓' if ok_c else '✗'} clone_app files={clone_res.get('file_count')} "
+            f"py={clone_res.get('py_count')} → {clone_res.get('path')}",
+        )
+        rounds.append(
+            {
+                "round": 0,
+                "tool": "clone_app",
+                "thought": "forced full DroneHive app clone for cowork test",
+                "args_keys": ["dest"],
+                "ok": ok_c,
+                "result_tail": json.dumps(clone_res, default=str)[:500],
+            }
+        )
+        transcript.append(
+            f"tool=clone_app ok={ok_c} → {json.dumps(clone_res, default=str)[:400]}"
+        )
+        if ok_c:
+            finished = True
+            final_status = str(clone_res.get("status") or "GREEN")
+            summary = (
+                f"clone_app GREEN files={clone_res.get('file_count')} "
+                f"py={clone_res.get('py_count')} dest={clone_res.get('path')}"
+            )
+            # package manifest + done seal path continues below loop
+            toolkit.package_manifest(
+                {
+                    "edition": "pro",
+                    "clone_app": True,
+                    "file_count": clone_res.get("file_count"),
+                    "dest": clone_res.get("path"),
+                }
+            )
+
     if use_ollama and ollama.get("reachable"):
         try:
             model = resolve_top_model()
+            _chat("system", f"brain online · model={model}")
         except Exception:
             model = None
+            _chat("system", "brain resolve failed · will use tools safety net")
+    else:
+        _chat("system", "ollama offline · heuristic deliverable path")
 
     for i in range(max_rounds):
+        if finished:
+            break
         if not use_ollama or not model:
             break
         history = "\n".join(transcript[-12:])
@@ -252,6 +419,7 @@ def run_pro_agent(
             f"RECENT TOOL RESULTS:\n{history or '(none yet)'}\n\n"
             f"Next tool JSON:"
         )
+        _chat("drone", f"round {i+1}/{max_rounds} · thinking…")
         try:
             text = generate(
                 prompt,
@@ -262,6 +430,7 @@ def run_pro_agent(
             )
         except Exception as e:
             rounds.append({"round": i + 1, "ok": False, "error": str(e)})
+            _chat("system", f"ollama error: {e}")
             break
 
         call = _parse_tool_call(text)
@@ -274,6 +443,7 @@ def run_pro_agent(
                     "raw_tail": (text or "")[-400:],
                 }
             )
+            _chat("system", "parse miss · retrying tool JSON")
             # one more chance, then heuristic
             if i >= 2:
                 break
@@ -282,14 +452,29 @@ def run_pro_agent(
         tool = str(call.get("tool") or "")
         args = call.get("args") if isinstance(call.get("args"), dict) else {}
         thought = str(call.get("thought") or "")[:200]
+        if thought:
+            _chat("drone", thought)
+        _chat("tool", f"→ {tool}({', '.join(f'{k}=' for k in list(args.keys())[:6])})")
         result = _dispatch(toolkit, tool, args)
+        ok = bool(result.get("ok"))
+        # short human result
+        if result.get("path"):
+            _chat("tool", f"✓ {tool} → {result.get('path')}" if ok else f"✗ {tool} failed")
+        elif result.get("stdout"):
+            out = str(result.get("stdout") or "").strip().replace("\n", " ")[:200]
+            _chat("tool", f"✓ {tool}: {out}" if ok else f"✗ {tool}")
+        elif tool == "done":
+            _chat("drone", f"done · {result.get('status')} · {result.get('summary', '')[:180]}")
+        else:
+            _chat("tool", f"{'✓' if ok else '✗'} {tool}")
+
         rounds.append(
             {
                 "round": i + 1,
                 "tool": tool,
                 "thought": thought,
                 "args_keys": list(args.keys()),
-                "ok": bool(result.get("ok")),
+                "ok": ok,
                 "result_tail": json.dumps(result, default=str)[:500],
             }
         )
@@ -312,7 +497,11 @@ def run_pro_agent(
         and not any(str(p).endswith(".py") for p in evidence_before)
     )
     if need_more:
+        _chat("system", "safety net · writing guarantee deliverables…")
         heur = _heuristic_finish(toolkit, goal)
+        for h in heur:
+            if isinstance(h, dict) and h.get("path"):
+                _chat("tool", f"✓ {h.get('tool')} → {h.get('path')}")
         rounds.append(
             {
                 "round": "heuristic",
@@ -349,7 +538,7 @@ def run_pro_agent(
     seal = {
         "schema": "drone.hive.pro.agent.v1",
         "edition": "pro",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "status": final_status if finished else ("PARTIAL" if evidence else "RED"),
         "false_green": 0,
         "utc": _utc(),
@@ -387,4 +576,8 @@ def run_pro_agent(
     latest.write_text(json.dumps(seal, indent=2), encoding="utf-8")
     seal["seal_path"] = str(seal_path)
     seal["report_path"] = str(seal_path)
+    _chat(
+        "system",
+        f"seal {seal.get('status')} · tools={seal.get('tool_calls')} · {seal_path.name}",
+    )
     return seal

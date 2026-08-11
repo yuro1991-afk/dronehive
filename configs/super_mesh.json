@@ -1,0 +1,153 @@
+{
+  "schema": "drone.super_mesh.v1",
+  "name": "Super Mesh Live AI — 20 m2m synapses + 2 flagships",
+  "version": "1.0.0",
+  "principal": "User ↔ fx-face only. m2m-* are mesh synapses. fx-reason conducts. false_green:0",
+  "idle_until_called": true,
+  "roster": "configs/m2m_node_roster.json",
+  "honesty": {
+    "human_brain": false,
+    "what_this_is": "20 m2m nodes each own ONE tool + ONE job; default IDLE until call. 2 flagships conduct/face. Real tools via DroneToolkit.",
+    "not": "biological neurons or independent 22 full VRAM loads or always-on fleet fire"
+  },
+  "flagships": {
+    "reason": "fx-reason",
+    "face": "fx-face",
+    "catalog": "configs/flagship_clones.json"
+  },
+  "m2m": {
+    "catalog": "configs/m2m_clones_0.5b.json",
+    "base": "qwen2.5:0.5b",
+    "prefix": "m2m-",
+    "count": 20,
+    "strict_m2m": true
+  },
+  "loop": {
+    "phases": [
+      "SENSE",
+      "ROUTE",
+      "FIRE_MESH",
+      "PACKETS",
+      "TOOLS",
+      "HEMISPHERE_MERGE",
+      "CONDUCT",
+      "FACE",
+      "RECYCLE",
+      "WEIGHT",
+      "GATE"
+    ],
+    "default_ticks": 2,
+    "max_ticks": 6,
+    "max_synapses_per_tick": 6,
+    "min_synapses_per_tick": 3,
+    "parallel_workers": 3,
+    "num_predict_synapse": 80,
+    "num_predict_reason": 280,
+    "num_predict_face": 320,
+    "num_predict_tools": 160,
+    "stop_confidence": 0.88,
+    "keep_alive": "30m",
+    "tools_enabled": true,
+    "tools_max_calls": 4,
+    "recycle_enabled": true,
+    "recycle_reinject": true,
+    "reinject_limit": 4
+  },
+  "tools": {
+    "enabled": true,
+    "use_all_tools": true,
+    "planner_model": "fx-reason",
+    "require_tool_for_green": false,
+    "tools_allowed": null,
+    "note": "null tools_allowed = full DroneToolkit.ALL_TOOLS"
+  },
+  "recycle": {
+    "enabled": true,
+    "max_active": 64,
+    "max_recycle": 128,
+    "reinject": true,
+    "reinject_limit": 4,
+    "archive": true
+  },
+  "synapse": {
+    "default_weight": 0.5,
+    "edge_default": 0.35,
+    "learn_rate": 0.1,
+    "decay": 0.015,
+    "min_weight": 0.05,
+    "max_weight": 0.95,
+    "hebbian": true
+  },
+  "hemispheres": {
+    "left": {
+      "role": "analytic_serial",
+      "nodes": [
+        "m2m-probe",
+        "m2m-scout",
+        "m2m-map",
+        "m2m-plan",
+        "m2m-tool",
+        "m2m-code",
+        "m2m-parse",
+        "m2m-ops",
+        "m2m-left",
+        "m2m-seal"
+      ]
+    },
+    "right": {
+      "role": "holistic_parallel",
+      "nodes": [
+        "m2m-flash",
+        "m2m-recall",
+        "m2m-right",
+        "m2m-critic",
+        "m2m-rank",
+        "m2m-watch",
+        "m2m-route",
+        "m2m-drone",
+        "m2m-bus",
+        "m2m-callosum"
+      ]
+    }
+  },
+  "hardwire_edges": [
+    ["m2m-probe", "m2m-scout"],
+    ["m2m-scout", "m2m-map"],
+    ["m2m-map", "m2m-plan"],
+    ["m2m-plan", "m2m-tool"],
+    ["m2m-tool", "m2m-code"],
+    ["m2m-code", "m2m-parse"],
+    ["m2m-parse", "m2m-ops"],
+    ["m2m-ops", "m2m-left"],
+    ["m2m-left", "m2m-seal"],
+    ["m2m-seal", "m2m-callosum"],
+    ["m2m-flash", "m2m-recall"],
+    ["m2m-recall", "m2m-right"],
+    ["m2m-right", "m2m-critic"],
+    ["m2m-critic", "m2m-rank"],
+    ["m2m-rank", "m2m-watch"],
+    ["m2m-watch", "m2m-route"],
+    ["m2m-route", "m2m-drone"],
+    ["m2m-drone", "m2m-bus"],
+    ["m2m-bus", "m2m-callosum"],
+    ["m2m-callosum", "m2m-probe"],
+    ["m2m-callosum", "m2m-flash"],
+    ["m2m-left", "m2m-right"],
+    ["m2m-scout", "m2m-route"],
+    ["m2m-plan", "m2m-critic"],
+    ["m2m-code", "m2m-drone"],
+    ["m2m-ops", "m2m-watch"],
+    ["m2m-seal", "m2m-rank"],
+    ["m2m-callosum", "fx-reason"],
+    ["m2m-seal", "fx-reason"],
+    ["m2m-critic", "fx-reason"],
+    ["m2m-bus", "fx-reason"],
+    ["fx-reason", "fx-face"]
+  ],
+  "seed_routes": {
+    "default": ["m2m-scout", "m2m-plan", "m2m-code", "m2m-critic", "m2m-callosum", "m2m-seal"],
+    "code": ["m2m-probe", "m2m-code", "m2m-tool", "m2m-parse", "m2m-critic", "m2m-seal"],
+    "ops": ["m2m-ops", "m2m-watch", "m2m-route", "m2m-drone", "m2m-bus", "m2m-seal"],
+    "fast": ["m2m-flash", "m2m-scout", "m2m-rank", "m2m-callosum"]
+  }
+}

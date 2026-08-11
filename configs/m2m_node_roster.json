@@ -1,0 +1,226 @@
+{
+  "schema": "drone.m2m_node_roster.v1",
+  "name": "M2M node roster — one tool + one job each; idle until called",
+  "version": "1.0.0",
+  "law": [
+    "Each m2m node owns exactly ONE primary tool and ONE job",
+    "Default state = IDLE — no Ollama fire, no tool call until called",
+    "Only router / fx-reason / explicit call_node wakes a node",
+    "On call: run job brief (optional LM) then execute owned tool if args provided",
+    "false_green: 0"
+  ],
+  "idle_policy": {
+    "default_state": "IDLE",
+    "auto_fire_all": false,
+    "wake_only_when_called": true,
+    "sleep_after_call": true
+  },
+  "nodes": [
+    {
+      "tag": "m2m-probe",
+      "job": "Research probe — scan facts, unknowns, paths",
+      "tool": "list_dir",
+      "tool_args_default": { "rel": "." },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-scout",
+      "job": "Intent scout — classify goal keywords",
+      "tool": "list_tools",
+      "tool_args_default": {},
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-flash",
+      "job": "Flash brief — max-density one-liner for conductor",
+      "tool": "hash_text",
+      "tool_args_default": { "text": "mesh-flash" },
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-map",
+      "job": "Structure map — tree/edges of workspace",
+      "tool": "list_dir",
+      "tool_args_default": { "rel": "." },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-plan",
+      "job": "Planner — steps and stop conditions",
+      "tool": "write_json",
+      "tool_args_default": {
+        "rel_path": "plan_packet.json",
+        "data": { "role": "plan", "status": "draft" }
+      },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-code",
+      "job": "Code micro — patch sketch via python smoke",
+      "tool": "run_python",
+      "tool_args_default": { "code": "print('m2m-code-idle-ok')" },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-ops",
+      "job": "Ops status — host diagnostics",
+      "tool": "run_host_diagnostics",
+      "tool_args_default": {},
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-critic",
+      "job": "Critic — PASS/FAIL on evidence",
+      "tool": "read_text",
+      "tool_args_default": { "rel_path": "plan_packet.json" },
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-route",
+      "job": "Router — pick next worker tag",
+      "tool": "llm_list",
+      "tool_args_default": {},
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-recall",
+      "job": "Memory recall — knowledge sources",
+      "tool": "knowledge_sources",
+      "tool_args_default": {},
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-tool",
+      "job": "Tool planner — discover tool pack",
+      "tool": "list_tools",
+      "tool_args_default": {},
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-bus",
+      "job": "AI bus — status + packet transit",
+      "tool": "ai_bus_status",
+      "tool_args_default": {},
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-left",
+      "job": "Left hemisphere serial logic brief",
+      "tool": "append_log",
+      "tool_args_default": { "line": "m2m-left called" },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-right",
+      "job": "Right hemisphere pattern brief",
+      "tool": "board_list",
+      "tool_args_default": {},
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-callosum",
+      "job": "Callosum merge — bus write merged packet",
+      "tool": "ai_bus_write",
+      "tool_args_default": {},
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-seal",
+      "job": "Seal gate — package manifest evidence",
+      "tool": "package_manifest",
+      "tool_args_default": { "extra": { "node": "m2m-seal" } },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-watch",
+      "job": "Health watch — shell allowlist pulse",
+      "tool": "run_shell",
+      "tool_args_default": { "command": "echo m2m-watch-ok" },
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-parse",
+      "job": "Parse/extract — read structured files",
+      "tool": "read_text",
+      "tool_args_default": { "rel_path": "out.txt" },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-rank",
+      "job": "Rank/score options — hash + score stub",
+      "tool": "hash_text",
+      "tool_args_default": { "text": "rank" },
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    },
+    {
+      "tag": "m2m-drone",
+      "job": "Generic drone worker — write status proof",
+      "tool": "write_text",
+      "tool_args_default": {
+        "rel_path": "drone_status.txt",
+        "content": "m2m-drone IDLE→CALLED\n"
+      },
+      "hemi": "right",
+      "idle": true,
+      "state": "IDLE"
+    }
+  ],
+  "flagships": [
+    {
+      "tag": "fx-reason",
+      "job": "Mesh conductor — call nodes, merge packets, plan tools",
+      "tool": "llm_route",
+      "tool_args_default": {},
+      "idle": true,
+      "state": "IDLE",
+      "talks_to_user": false
+    },
+    {
+      "tag": "fx-face",
+      "job": "User face — only pole that speaks to user",
+      "tool": "board_publish",
+      "tool_args_default": {},
+      "idle": true,
+      "state": "IDLE",
+      "talks_to_user": true
+    }
+  ]
+}

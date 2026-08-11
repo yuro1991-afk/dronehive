@@ -67,6 +67,20 @@ def main(argv: list[str] | None = None) -> int:
     inbox = sub.add_parser("inbox", help="process file-drop inbox")
     inbox.add_argument("--max", type=int, default=10)
 
+    sub.add_parser("lanes", help="Grok cowork live lanes status")
+    ho = sub.add_parser("handoff", help="Grok → drones handoff")
+    ho.add_argument("--goal", "-g", required=True)
+    ho.add_argument(
+        "--mode",
+        "-m",
+        default="fast",
+        choices=["fast", "full", "hive", "brain", "pro", "inbox"],
+    )
+    ho.add_argument("--workers", type=int, default=2)
+    ho.add_argument("--cycles", type=int, default=2)
+    ho.add_argument("--lm-assist", default="none")
+    ho.add_argument("--notes", default="")
+
     args = p.parse_args(argv)
 
     from drone.app.service import DroneHiveService
@@ -119,7 +133,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.get("status") == "GREEN" else 1
     if args.cmd == "brain":
         seal = svc.brain_command(args.command)
-        print(json.dumps(seal, indent=2))
+        # Final machine-readable line for lean TUI (chat lines already streamed as CHAT|)
+        print("SEAL|" + json.dumps(seal, ensure_ascii=False, default=str), flush=True)
         return 0 if seal.get("status") == "GREEN" else 1
     if args.cmd == "pro":
         from drone.pro.service import DroneHiveProService
@@ -131,11 +146,27 @@ def main(argv: list[str] | None = None) -> int:
             use_ollama=not bool(args.no_ollama),
             also_hive=bool(args.hive),
         )
-        print(json.dumps(seal, indent=2))
+        # Final machine-readable line for TUI (chat lines already streamed as CHAT|)
+        print("SEAL|" + json.dumps(seal, ensure_ascii=False, default=str), flush=True)
         return 0 if seal.get("status") == "GREEN" else 1
     if args.cmd == "inbox":
         print(json.dumps(svc.process_inbox(max_n=args.max), indent=2))
         return 0
+    if args.cmd == "lanes":
+        out = svc.lanes_live()
+        print(json.dumps(out, indent=2))
+        return 0 if out.get("ready_for_handoff") else 1
+    if args.cmd == "handoff":
+        report = svc.handoff(
+            args.goal,
+            mode=args.mode,
+            workers=args.workers,
+            cycles=args.cycles,
+            lm_assist=args.lm_assist,
+            notes=args.notes or "",
+        )
+        print(json.dumps(report, indent=2, default=str))
+        return 0 if report.get("status") in {"GREEN", "OPEN", "PARTIAL"} else 1
     return 2
 
 

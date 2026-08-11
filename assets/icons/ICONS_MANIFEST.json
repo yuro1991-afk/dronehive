@@ -1,0 +1,38 @@
+{
+  "schema": "drone.swarm.icons.v1",
+  "status": "GREEN",
+  "false_green": 0,
+  "icon_root": "G:\\AI-Home\\projects\\ai-worker-drone-0.5b\\assets\\icons",
+  "icons": [
+    {
+      "file": "drone-ollama-mount.ico",
+      "bytes": 370070,
+      "sha256_16": "81ddf1888d864872"
+    },
+    {
+      "file": "drone-ollama-tui.ico",
+      "bytes": 370070,
+      "sha256_16": "019fba69e8239698"
+    },
+    {
+      "file": "drone-ollama.ico",
+      "bytes": 370070,
+      "sha256_16": "83dd7330693701e5"
+    },
+    {
+      "file": "dronehive.ico",
+      "bytes": 370070,
+      "sha256_16": "a6065236ab2ae02d"
+    }
+  ],
+  "shortcuts": [
+    "DroneHive.lnk",
+    "Drone Ollama.lnk",
+    "Drone Ollama TUI.lnk",
+    "Drone Mount.lnk"
+  ],
+  "desktops": [
+    "C:\\Users\\yuro1\\Desktop",
+    "C:\\Users\\yuro1\\OneDrive\\Desktop"
+  ]
+}

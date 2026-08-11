@@ -1,7 +1,7 @@
 {
   "schema": "drone.hive.app.v1",
   "name": "DroneHive",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "product": "Standalone modular AI worker drone swarm",
   "host": "127.0.0.1",
   "port": 8765,

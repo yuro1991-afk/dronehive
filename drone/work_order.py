@@ -126,9 +126,14 @@ def imprint_drone(
     controller_kind: str = "local",
     controller_name: str = "hive",
     swarm_system: str = "buzzer_hive",
+    knowledge: dict[str, Any] | None = None,
+    with_knowledge: bool = True,
 ) -> dict[str, Any]:
     """
     Write the work-order imprint for a fresh drone (active imprint file).
+
+    Knowledge law: imprint slim school+codex pack for *this task* (low latency).
+    Full curriculum stays on disk; bodies are capped.
 
     swarm_system:
       - buzzer_hive  → BuzzerHive / clean-slate buzzers (hive / swarm CLI)
@@ -138,6 +143,41 @@ def imprint_drone(
     cfg = load_work_order_config(root)
     systems = (cfg.get("swarm_systems") or {})
     sys_meta = systems.get(swarm_system) or {"id": swarm_system}
+
+    knowledge_pack: dict[str, Any] | None = knowledge
+    if with_knowledge and knowledge_pack is None:
+        try:
+            from .knowledge_imprint import build_knowledge_imprint
+
+            # COLD by default: refs only — bodies shared via hive board chunks
+            knowledge_pack = build_knowledge_imprint(
+                root,
+                str(task.get("goal") or ""),
+                codex_query=str(task.get("codex_query") or ""),
+                cfg=cfg.get("knowledge_imprint") or {},
+                cold_mode=True,
+            )
+        except Exception as e:
+            knowledge_pack = {
+                "ok": False,
+                "error": str(e),
+                "false_green": 0,
+            }
+
+    # Task-exact tool pack (not full toolkit)
+    tool_pack: dict[str, Any]
+    try:
+        from .hive_board import tools_for_goal
+
+        tool_pack = tools_for_goal(str(task.get("goal") or ""))
+    except Exception as e:
+        tool_pack = {
+            "pack_id": "default",
+            "tools": [],
+            "error": str(e),
+            "false_green": 0,
+        }
+
     imprint = {
         "schema": "ai.worker.drone.imprint.v1",
         "utc": _utc(),
@@ -157,7 +197,11 @@ def imprint_drone(
             "commands": (cfg.get("codex") or {}).get("commands"),
             "decision_tree": (cfg.get("codex") or {}).get("decision_tree"),
             "host_muscle_defaults": (cfg.get("codex") or {}).get("host_muscle_defaults"),
+            "fast_slice_ok": bool((knowledge_pack or {}).get("codex", {}).get("ok")),
         },
+        "knowledge": knowledge_pack,
+        "tool_pack": tool_pack,
+        "cold_knowledge": True,
         "task": task,
         "lifecycle": cfg.get("lifecycle") or [],
         "live_registry": cfg.get("live_registry") or {},
@@ -184,13 +228,39 @@ def query_codex(
     query: str,
     *,
     timeout_s: int = 45,
+    mode: str = "fast",
 ) -> dict[str, Any]:
     """
-    Run LLM Frameworks Codex CLI. Returns real exit code; never fakes success.
+    Codex assist for imprinted drones.
+
+    mode:
+      - fast (default): in-process JSON slice (~0–2 ms warm) — preferred for latency
+      - cli: spawn query_llm_codex.py (~60 ms) when verification needed
+
+    Never fakes success. false_green: 0.
     """
     root = Path(root)
     cfg = load_work_order_config(root)
     codex = cfg.get("codex") or {}
+    q = (query or "stats").strip() or "stats"
+    m = (mode or "fast").lower().strip()
+    if m in {"fast", "in_process", "default", ""}:
+        try:
+            from .knowledge_imprint import query_codex_fast
+
+            hit = query_codex_fast(
+                q,
+                codex_root=Path(codex.get("root") or r"F:\GrokSelfLibrary\knowledge\codex"),
+            )
+            hit["attempted"] = True
+            hit["mode"] = hit.get("mode") or "in_process"
+            return hit
+        except Exception as e:
+            # fall through to CLI
+            fallback_err = str(e)
+    else:
+        fallback_err = ""
+
     cli = Path(codex.get("query_cli") or r"F:\GrokSelfLibrary\bin\query_llm_codex.py")
     py = _default_python()
     if not cli.is_file():
@@ -199,6 +269,7 @@ def query_codex(
             "attempted": False,
             "error": "query_llm_codex.py missing",
             "cli": str(cli),
+            "fast_error": fallback_err or None,
             "false_green": 0,
         }
     if not py.is_file():
@@ -209,7 +280,7 @@ def query_codex(
             "python": str(py),
             "false_green": 0,
         }
-    parts = [p for p in re.split(r"\s+", (query or "stats").strip()) if p]
+    parts = [p for p in re.split(r"\s+", q) if p]
     if not parts:
         parts = ["stats"]
     cmd = [str(py), str(cli), *parts]
@@ -226,6 +297,7 @@ def query_codex(
         return {
             "ok": proc.returncode == 0,
             "attempted": True,
+            "mode": "cli",
             "returncode": proc.returncode,
             "cmd": cmd,
             "query": " ".join(parts),
@@ -237,6 +309,7 @@ def query_codex(
         return {
             "ok": False,
             "attempted": True,
+            "mode": "cli",
             "error": str(e),
             "cmd": cmd,
             "false_green": 0,
@@ -259,14 +332,22 @@ def write_live_registry(
     model: str = "local",
     swarm_system: str = "buzzer_hive",
     extra: dict[str, Any] | None = None,
+    sync_cli: bool | None = None,
 ) -> dict[str, Any]:
     """
     Append a drone event to Super Cell live registry (mirrors to F:).
     Used by BOTH buzzer_hive and fabric_swarm.
+
+    Latency: always write local hive jsonl first (~1 ms). CLI sync is optional
+    (default off when knowledge_imprint.latency.registry_sync_cli is false).
     """
     root = Path(root)
     cfg = load_work_order_config(root)
     reg = cfg.get("live_registry") or {}
+    ki = cfg.get("knowledge_imprint") or {}
+    if sync_cli is None:
+        # default FAST: local first only; set true for full Super Cell mirror each death
+        sync_cli = bool(ki.get("registry_sync_cli", False))
     cli = Path(reg.get("cli") or r"G:\AI-Center\agents\super-cell-4\bridges\live_registry.py")
     py = _default_python()
     gate = (status or "RED").upper()
@@ -304,17 +385,32 @@ def write_live_registry(
     if extra:
         event.update(extra)
 
+    # Always durable local append first (latency cut; no false claim of Super Cell sync)
+    local = root / "data" / "hive" / "registry_local_events.jsonl"
+    with root_lock(root):
+        local.parent.mkdir(parents=True, exist_ok=True)
+        with local.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    if not sync_cli:
+        return {
+            "ok": True,
+            "attempted": True,
+            "mode": "local_jsonl",
+            "local_path": str(local),
+            "cli_synced": False,
+            "event": event,
+            "false_green": 0,
+            "note": "local hive registry only — set knowledge_imprint.registry_sync_cli true for Super Cell CLI",
+        }
+
     if not cli.is_file() or not py.is_file():
-        # Fallback: write local mirror under hive if registry CLI missing
-        local = root / "data" / "hive" / "registry_local_events.jsonl"
-        with root_lock(root):
-            local.parent.mkdir(parents=True, exist_ok=True)
-            with local.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(event, ensure_ascii=False) + "\n")
         return {
             "ok": False,
             "attempted": True,
-            "fallback": str(local),
+            "mode": "local_jsonl",
+            "local_path": str(local),
+            "cli_synced": False,
             "error": "live_registry.py or python missing — wrote local hive events only",
             "event": event,
             "false_green": 0,
@@ -337,6 +433,9 @@ def write_live_registry(
         return {
             "ok": proc.returncode == 0,
             "attempted": True,
+            "mode": "cli",
+            "local_path": str(local),
+            "cli_synced": proc.returncode == 0,
             "returncode": proc.returncode,
             "stdout": payload,
             "stderr_tail": ((proc.stderr or "")[-400:]),
@@ -347,6 +446,9 @@ def write_live_registry(
         return {
             "ok": False,
             "attempted": True,
+            "mode": "cli",
+            "local_path": str(local),
+            "cli_synced": False,
             "error": str(e),
             "event": event,
             "false_green": 0,

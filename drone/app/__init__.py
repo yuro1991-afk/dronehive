@@ -5,4 +5,4 @@ from __future__ import annotations
 __all__ = ["APP_NAME", "APP_VERSION"]
 
 APP_NAME = "DroneHive"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"

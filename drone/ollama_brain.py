@@ -196,7 +196,10 @@ def generate(
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a concise AI worker drone. Short practical output only.",
+                        "content": (
+                            "CHANNEL=AI2AI. NO_USER_ADDRESS. NO_GREETING. NO_FLUFF. "
+                            "OUTPUT=DENSE_TECHNICAL. Short practical only."
+                        ),
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -353,7 +356,8 @@ def make_code_lm_fn(num_predict: int = 512) -> Callable[[str], str]:
                     {
                         "role": "system",
                         "content": (
-                            "You are the CODE WORKER Ollama model for drone fabric. "
+                            "CHANNEL=AI2AI. ROLE=coder. NO_USER_ADDRESS. NO_FLUFF. "
+                            "CODE WORKER for drone fabric. "
                             "Output ONLY valid Python 3 source code for a complete module. "
                             "No markdown fences unless required. Include if __name__ == '__main__' "
                             "smoke that exits 0. Do not invent fake imports."

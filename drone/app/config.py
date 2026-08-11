@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 APP_SCHEMA = "drone.hive.app.v1"
-DEFAULT_VERSION = "2.0.0"
+DEFAULT_VERSION = "2.1.0"
 
 
 def user_install_dir() -> Path:
@@ -239,7 +239,8 @@ def load_app_config(root: Path | None = None) -> dict[str, Any]:
         },
     }
     if path.is_file():
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig: tolerate PowerShell/Windows BOM without breaking commission/app
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
         for k, v in defaults.items():
             if k not in data:
                 data[k] = v

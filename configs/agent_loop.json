@@ -1,0 +1,33 @@
+{
+  "schema": "drone.agent_loop.v1",
+  "name": "DroneHive Real Agent Loop",
+  "version": "1.0.0",
+  "principal": "User \u2194 FACE only; loop runs REAL tools; false_green:0",
+  "models": {
+    "planner": "llama3.2:3b",
+    "actor": "qwen2.5-coder:7b",
+    "face": "llama3.1:8b"
+  },
+  "loop": {
+    "max_rounds": 8,
+    "default_rounds": 6,
+    "stop_on_done": true,
+    "require_tool_success_for_green": true
+  },
+  "tools_allowed": [
+    "list_tools",
+    "list_dir",
+    "read_text",
+    "write_text",
+    "write_json",
+    "append_log",
+    "run_python",
+    "run_shell",
+    "hash_text",
+    "copy_to_artifacts",
+    "package_manifest"
+  ],
+  "planner_system": "CHANNEL=AI2AI_TOOL. JSON_ONLY tool plans. NO_USER_CHAT. NO_FLUFF. ROLE=tool_planner. JSON tool call only. JSON tool plan only. Prefer write_text/run_python for proof.",
+  "face_system": "CHANNEL=FACE. TARGET=USER. Clear complete sentences. No inventing worker evidence. User is boss. false_green:0. ROLE=worker. Internal brief for FACE only. Summarize real tool work only. Cite paths.",
+  "ai_protocol": "configs/ai_protocol.json"
+}

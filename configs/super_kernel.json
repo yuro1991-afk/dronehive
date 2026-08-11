@@ -1,0 +1,73 @@
+{
+  "schema": "drone.super_kernel.v1",
+  "name": "Super Kernel Lane",
+  "version": "1.0.0",
+  "host": "127.0.0.1",
+  "port": 11450,
+  "bind": "127.0.0.1",
+  "ollama_host": "http://127.0.0.1:11434",
+  "lane": "super_kernel",
+  "barebones": true,
+  "multi_thread": true,
+  "limits": {
+    "max_models": null,
+    "max_instances": null,
+    "only_limit": "vram",
+    "headroom_mib": 384,
+    "refuse_if_vram_cannot_hang": true,
+    "evict_lru_on_pressure": true,
+    "ram_headroom_mib": 2048,
+    "refuse_if_ram_cannot_hang": false
+  },
+  "ram_power": {
+    "enabled": true,
+    "process_priority": "high",
+    "hold_working_set": true,
+    "min_working_set_mib": 256,
+    "max_working_set_mib": 0,
+    "stability_buffer_mib": 64,
+    "idler_power_pulse": true,
+    "pulse_every_ticks": 4,
+    "note": "RAM power keeps Super Kernel process stable — not a server kill path"
+  },
+  "cpu_power": {
+    "enabled": true,
+    "process_priority": "high",
+    "affinity": null,
+    "boost_thread": true,
+    "thread_priority": 2,
+    "pulse_burn_ms": 2,
+    "idler_power_pulse": true,
+    "pulse_every_ticks": 2,
+    "note": "CPU power: HIGH priority + optional affinity + idler pulse — never kills server. Avoid realtime unless SUPER_KERNEL_REALTIME=1"
+  },
+  "gpu": {
+    "name": "RTX 3060",
+    "vram_mib": 12288,
+    "index": 0
+  },
+  "defaults": {
+    "num_predict": 256,
+    "temperature": 0.2,
+    "timeout_s": 180,
+    "keep_alive": "45m"
+  },
+  "est_vram_mib": {
+    "llama3.1:8b": 5500,
+    "qwen2.5-coder:7b": 5200,
+    "qwen2.5:7b": 5200,
+    "mistral:7b": 5000,
+    "gemma4:12b": 7500,
+    "llama3.2:3b": 2200,
+    "qwen2.5:3b": 2100,
+    "ai-smarts:latest": 2200,
+    "nomic-embed-text:latest": 400,
+    "minimax-m3:cloud": 0
+  },
+  "honesty": [
+    "No artificial model count cap",
+    "Only refuse when free VRAM cannot hang the request after headroom",
+    "Shared Ollama backend — kernel is multi-thread front lane",
+    "false_green: 0"
+  ]
+}

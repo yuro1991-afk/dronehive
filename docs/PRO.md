@@ -1,4 +1,4 @@
-# DroneHive Pro (v2.0.0)
+# DroneHive Pro (v2.1.0)
 
 **Tier:** premium / “richer” capability  
 **v1 preserved:** classic hive + role-mapped tools still ship.

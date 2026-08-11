@@ -76,8 +76,16 @@ class DroneHiveService:
                 "task": "/api/v1/task",
                 "fast": "/api/v1/fast",
                 "hive": "/api/v1/hive",
+                "handoff": "/api/v1/handoff",
+                "lanes": "/api/v1/lanes",
+                "cowork_collect": "/api/v1/cowork/collect",
                 "openai_chat": "/v1/chat/completions",
                 "links": "/api/v1/links",
+            },
+            "grok_cowork": {
+                "cli": "python -m drone handoff lanes|to|collect|status|e2e",
+                "packet_schema": "grok.drone.cowork.handoff.v1",
+                "dirs": "data/app/cowork/{outbox,inbox,active,done}",
             },
         }
 
@@ -191,6 +199,106 @@ class DroneHiveService:
         path = outbox / name
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return path
+
+    def handoff(
+        self,
+        goal: str,
+        *,
+        mode: str = "fast",
+        lane: str | None = None,
+        workers: int = 2,
+        cycles: int = 2,
+        lm_assist: str = "none",
+        controller: str = "grok",
+        notes: str = "",
+        context_paths: list[str] | None = None,
+        continuous_task_id: str | None = None,
+        goals: list[str] | None = None,
+        wait: bool = True,
+    ) -> dict[str, Any]:
+        """Grok → drones live handoff (cowork packet + lanes)."""
+        from drone.grok_handoff import GrokDroneHandoff
+
+        bridge = GrokDroneHandoff(self.root)
+        seal = bridge.handoff(
+            goal,
+            mode=mode,
+            lane=lane,
+            workers=workers,
+            cycles=cycles,
+            lm_assist=lm_assist,
+            controller=controller,
+            wait=wait,
+            notes=notes,
+            context_paths=context_paths,
+            continuous_task_id=continuous_task_id,
+            goals=goals,
+        )
+        self._write_outbox("handoff", seal)
+        return seal
+
+    def lanes_live(self) -> dict[str, Any]:
+        from drone.grok_handoff import GrokDroneHandoff
+
+        return GrokDroneHandoff(self.root).lanes_live()
+
+    def super_llms_status(self) -> dict[str, Any]:
+        from drone.super_llms import SuperLLMs
+
+        return SuperLLMs(self.root).status()
+
+    def super_llms_route(self, goal: str, role: str | None = None) -> dict[str, Any]:
+        from drone.super_llms import SuperLLMs
+
+        return SuperLLMs(self.root).route(goal, role=role)
+
+    def super_llms_chat(
+        self, prompt: str, *, model: str | None = None, role: str | None = None
+    ) -> dict[str, Any]:
+        from drone.super_llms import SuperLLMs
+
+        return SuperLLMs(self.root).chat(prompt, model=model, role=role)
+
+    def seer_type(self, text: str) -> dict[str, Any]:
+        from drone.future_seer import FutureSeer
+
+        return FutureSeer(self.root).speculate(text)
+
+    def seer_commit(
+        self, text: str, *, mode: str = "preview", allow_auto: bool = False
+    ) -> dict[str, Any]:
+        from drone.future_seer import FutureSeer
+
+        return FutureSeer(self.root).commit(text, mode=mode, allow_auto=allow_auto)
+
+    def seer_hot(self) -> dict[str, Any]:
+        from drone.future_seer import FutureSeer
+
+        return FutureSeer(self.root).keep_hot(force=True)
+
+    def seer_status(self) -> dict[str, Any]:
+        from drone.future_seer import FutureSeer
+
+        return FutureSeer(self.root).status()
+
+    def face_hosts(self) -> dict[str, Any]:
+        from drone.multi_face import MultiFace
+
+        return MultiFace(self.root).probe_hosts()
+
+    def face_ask(
+        self, text: str, *, include_opt_in: bool = False, workers: list[str] | None = None
+    ) -> dict[str, Any]:
+        from drone.multi_face import MultiFace
+
+        return MultiFace(self.root).ask(
+            text, include_opt_in=include_opt_in, workers=workers
+        )
+
+    def collect_cowork(self, max_n: int = 20) -> dict[str, Any]:
+        from drone.grok_handoff import GrokDroneHandoff
+
+        return GrokDroneHandoff(self.root).collect(max_n=max_n)
 
     def process_inbox(self, max_n: int = 10) -> dict[str, Any]:
         """Universal file-drop: read JSON goals from inbox, run tasks, move to outbox."""

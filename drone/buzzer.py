@@ -194,18 +194,54 @@ class Buzzer:
             **(getattr(self, "_scratch_upgrade", {}) or {}),
         }
 
+        # Latency: prefer knowledge already imprinted (in-process codex + school).
+        # Avoid second subprocess codex when imprint.knowledge.codex is ok.
+        kpack = (self._imprint or {}).get("knowledge") or {}
+        k_codex = (kpack.get("codex") or {}) if isinstance(kpack, dict) else {}
         codex_result: dict[str, Any] = {
             "attempted": False,
             "ok": False,
             "skipped": not bool(task.get("codex_required")),
+            "mode": "none",
         }
         if task.get("codex_required"):
-            codex_result = query_codex(root, str(task.get("codex_query") or "stats"))
+            if k_codex.get("ok"):
+                codex_result = {
+                    "attempted": True,
+                    "ok": True,
+                    "mode": "imprint_pack",
+                    "query": k_codex.get("query") or task.get("codex_query"),
+                    "ms": k_codex.get("ms"),
+                    "data": k_codex.get("data"),
+                    "skipped_cli": True,
+                }
+            else:
+                codex_result = query_codex(
+                    root,
+                    str(task.get("codex_query") or "stats"),
+                    mode="fast",
+                )
             self._scratch["codex"] = {
                 "ok": codex_result.get("ok"),
                 "query": codex_result.get("query"),
+                "mode": codex_result.get("mode"),
                 "returncode": codex_result.get("returncode"),
             }
+            self._scratch["knowledge_ms"] = (kpack or {}).get("ms")
+            self._scratch["knowledge_lessons"] = (
+                (kpack.get("school") or {}).get("lessons_imprinted")
+                if isinstance(kpack, dict)
+                else 0
+            )
+
+        # Slim knowledge text for tools/LM (capped) — imprint already has full pack
+        knowledge_text = ""
+        try:
+            from .knowledge_imprint import knowledge_prompt_block
+
+            knowledge_text = knowledge_prompt_block(kpack if isinstance(kpack, dict) else {})
+        except Exception:
+            knowledge_text = ""
 
         if lane_mode == "fast":
             fabric_report = self.fabric.run_task_fast(
@@ -219,6 +255,16 @@ class Buzzer:
                     "generation": self.generation,
                     "lane": "fast",
                     "swarm_system": "buzzer_hive",
+                    "knowledge_imprint": True,
+                    "cold_knowledge": True,
+                    "tool_scope": (self._imprint or {}).get("tool_pack", {}).get("tools")
+                    if isinstance(self._imprint, dict)
+                    else None,
+                    "knowledge_ms": (kpack or {}).get("ms") if isinstance(kpack, dict) else None,
+                    "knowledge_lessons": (kpack.get("school") or {}).get("lessons_imprinted")
+                    if isinstance(kpack, dict)
+                    else 0,
+                    "knowledge_text": knowledge_text[:800] if knowledge_text else "",
                 },
             )
             # Fast lane: skip heavy clean-slate passport path extras already done;
@@ -240,6 +286,20 @@ class Buzzer:
                     "imprint_path": self._imprint.get("imprint_path"),
                     "swarm_system": "buzzer_hive",
                     "lane": "full",
+                    "knowledge_imprint": True,
+                    "cold_knowledge": True,
+                    "tool_scope": (self._imprint or {}).get("tool_pack", {}).get("tools")
+                    if isinstance(self._imprint, dict)
+                    else None,
+                    "tool_pack": (self._imprint or {}).get("tool_pack")
+                    if isinstance(self._imprint, dict)
+                    else None,
+                    "knowledge_ms": (kpack or {}).get("ms") if isinstance(kpack, dict) else None,
+                    "knowledge_lessons": (kpack.get("school") or {}).get("lessons_imprinted")
+                    if isinstance(kpack, dict)
+                    else 0,
+                    # cold: short ref block only — not full lesson bodies
+                    "knowledge_text": (knowledge_text or "")[:800],
                 },
                 parallel_hemispheres=True,
             )
@@ -359,6 +419,42 @@ class Buzzer:
             "false_green": 0,
         }
         report["lifecycle_detail"] = lifecycle
+
+        # Two-way AI bus: push result to all host AI surfaces (write path)
+        try:
+            from .ai_bus import AIBus
+
+            bus = AIBus(root)
+            bus_out = bus.sync_write(
+                {
+                    **report,
+                    "knowledge": (self._imprint or {}).get("knowledge"),
+                    "evidence": [
+                        report.get("seal_path"),
+                        report.get("imprint_path"),
+                        report.get("library_note_path"),
+                        (report.get("fabric") or {}).get("report_path"),
+                    ],
+                },
+                unit_id=self.buzzer_id,
+                goal=effective_goal,
+            )
+            report["ai_bus"] = {
+                "ok": bus_out.get("ok"),
+                "ok_count": bus_out.get("ok_count"),
+                "channel_count": bus_out.get("channel_count"),
+                "path": bus_out.get("path"),
+                "false_green": 0,
+            }
+        except Exception as e:
+            report["ai_bus"] = {"ok": False, "error": str(e), "false_green": 0}
+
+        # Re-seal after lifecycle + ai_bus so disk seal includes two-way proof
+        try:
+            seal = self.hive_memory.save_buzzer_seal(self.buzzer_id, report)
+            report["seal_path"] = str(seal)
+        except Exception as e:
+            report["reseal_error"] = str(e)
 
         # Clean Slate upgrade: full wipe audit only on full lane
         passport_path = (getattr(self, "_scratch_upgrade", {}) or {}).get("passport_path")

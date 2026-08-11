@@ -1,0 +1,44 @@
+{
+  "schema": "drone.bridge_1080.v1",
+  "name": "Stable Bridge · GTX 1080 Ti",
+  "version": "1.0.0",
+  "host": "BOSS",
+  "law": [
+    "RTX 3060 is MAIN (display + default Ollama :11434) — never hijack",
+    "GTX 1080 Ti is SPARE opt-in only",
+    "false_green: 0 — RED when PnP Error / Code 22/31 / not in nvidia-smi",
+    "Fail closed: no second lane until 1080 is LIVE in nvidia-smi",
+    "Stable bridge does not force-kill Ollama on 3060"
+  ],
+  "main_gpu": {
+    "name_match": "3060",
+    "role": "main",
+    "ollama_port": 11434
+  },
+  "spare_gpu": {
+    "name_match": "1080",
+    "pnp_match": "1080 Ti",
+    "pci_dev": "DEV_1B06",
+    "role": "spare",
+    "vram_mib": 11264,
+    "second_lane_port": 11436,
+    "experimental_ollama": false
+  },
+  "cuda_map": {
+    "device_order": "PCI_BUS_ID",
+    "dual_visible": "0,1",
+    "comment": "When both LIVE by PCI bus: typically 0=1080 (bus lower), 1=3060 — verify with nvidia-smi",
+    "main_only_default": "auto"
+  },
+  "bridge": {
+    "state_dir": "%USERPROFILE%\\.ollama\\bridge-1080",
+    "heartbeat_s": 20,
+    "auto_enable_pnp": false,
+    "require_admin_for_enable": true
+  },
+  "honesty": {
+    "driver_note": "Pascal 1080 Ti needs a driver branch that still lists DEV_1B06. Ampere-only 560+/610 packs may leave it Error/disabled.",
+    "code_22": "Device disabled — Enable-PnpDevice (admin) may restore if driver supports it",
+    "code_31": "Driver failed — need dual-GPU capable install (e.g. 580.x that lists both cards)"
+  }
+}

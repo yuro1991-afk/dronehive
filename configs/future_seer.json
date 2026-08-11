@@ -1,0 +1,60 @@
+{
+  "schema": "drone.future_seer.v1",
+  "name": "DroneHive Future Seer",
+  "version": "1.0.0",
+  "product": "Top-tier multi-model speculative text future seer",
+  "host": "BOSS",
+  "endpoint": "http://127.0.0.1:11434",
+  "gpu": {
+    "name": "RTX 3060",
+    "vram_mib": 12288,
+    "max_concurrent_full": 1,
+    "max_hot_tiny": 2
+  },
+  "typeahead": {
+    "min_chars": 8,
+    "debounce_ms": 280,
+    "max_partial_len": 400,
+    "speculate_every_n_chars": 4
+  },
+  "hot_lanes": {
+    "enabled": true,
+    "keep_alive": "45m",
+    "warm_models": ["llama3.2:3b", "ai-smarts:latest", "qwen2.5-coder:7b"],
+    "ping_interval_s": 90,
+    "num_predict_warm": 4
+  },
+  "speculation": {
+    "intent_model": "llama3.2:3b",
+    "draft_model": "llama3.1:8b",
+    "code_model": "qwen2.5-coder:7b",
+    "smarts_model": "ai-smarts:latest",
+    "branches": ["intent", "draft", "task_plan"],
+    "num_predict_intent": 96,
+    "num_predict_draft": 160,
+    "num_predict_task": 120,
+    "parallel_tiny_only": true,
+    "honesty": "Not full model per branch at once on 12GB — intent/tiny first, then one full draft"
+  },
+  "execute": {
+    "auto_execute_threshold": 0.82,
+    "default_mode": "handoff_fast",
+    "modes": ["preview", "handoff_fast", "handoff_hive", "helper_probe", "helper_draft"]
+  },
+  "jane": {
+    "super_cell": "G:\\AI-Center\\agents\\super-cell-4",
+    "muscle_dispatch": "G:\\AI-Center\\agents\\super-cell-4\\bridges\\muscle_dispatch.py",
+    "cell_parallel": "G:\\AI-Center\\agents\\super-cell-4\\bridges\\cell_parallel.py",
+    "live_registry": "G:\\AI-Center\\agents\\super-cell-4\\registry\\events.jsonl",
+    "everest_cli": "G:\\AI-Center\\bridge\\everest\\cli.py",
+    "highway": "G:\\AI-Center\\fabric\\HIGHWAY",
+    "pythonpath_ai_center": "G:\\AI-Center"
+  },
+  "safety_law": [
+    "false_green: 0 — drafts are speculative until commit seal",
+    "Never run two 7B+ heavy generations at once",
+    "Typeahead drafts are NOT user-approved execution",
+    "Auto-execute only on explicit commit or high-confidence + allow_auto",
+    "Keep lanes hot with tiny/coder warm, not all full models"
+  ]
+}

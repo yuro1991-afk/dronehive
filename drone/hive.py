@@ -38,7 +38,7 @@ class BuzzerHive:
     def __init__(
         self,
         root: Path,
-        lm_assist: str = "ollama",
+        lm_assist: str = "full",
         library: LibraryBridge | None = None,
         lane: str = "full",
     ) -> None:
@@ -227,11 +227,13 @@ class BuzzerHive:
             "work_order": report.get("work_order", True),
             "imprint_path": report.get("imprint_path"),
             "lifecycle": report.get("lifecycle"),
+            "ai_bus": report.get("ai_bus"),
             "seal_path": report.get("seal_path"),
             "hive_doc_id": report.get("hive_doc_id"),
             "library_note_path": report.get("library_note_path"),
             "fabric_report": (report.get("fabric") or {}).get("report_path"),
             "smarter_delta": (report.get("fabric") or {}).get("smarter_delta"),
+            "duration_ms": report.get("duration_ms"),
             "started_utc": started_utc,
             "ended_utc": _utc(),
             "duration_ms": round((ended - started) * 1000, 2),

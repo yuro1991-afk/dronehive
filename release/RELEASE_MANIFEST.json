@@ -1,14 +1,9 @@
-﻿{
-    "schema":  "drone.hive.release.v2",
-    "app":  "DroneHive",
-    "version":  "2.0.0",
-    "utc":  "2026-08-11T08:23:30Z",
-    "wheel":  [
-                  "dronehive-2.0.0-py3-none-any.whl"
-              ],
-    "tui_zip":  "dronehive-tui-2.0.0-win64.zip",
-    "tui_exe":  "apps/dronehive-tui/target/release/dronehive-tui.exe",
-    "exe_bytes":  794112,
-    "uac":  false,
-    "false_green":  0
+{
+    "version":  "2.1.0",
+    "ollama_tui_zip":  "drone-ollama-tui-1.0.0-win64.zip",
+    "schema":  "drone.hive.release.manifest.v1",
+    "false_green":  0,
+    "wheel":  "dronehive-2.1.0-py3-none-any.whl",
+    "utc":  "2026-08-11T11:19:27Z",
+    "tui_zip":  "dronehive-tui-2.1.0-win64.zip"
 }

@@ -1,0 +1,62 @@
+{
+  "schema": "drone.synaptic_loop.v1",
+  "name": "DroneHive Synaptic Agent Loop",
+  "version": "1.0.0",
+  "principal": "User \u2194 fx-face only; 20 m2m synapses fire in super mesh; fx-reason conducts",
+  "phases": [
+    "SENSE",
+    "FIRE",
+    "INTEGRATE",
+    "WEIGHT",
+    "GATE"
+  ],
+  "loop": {
+    "default_ticks": 3,
+    "max_ticks": 12,
+    "tick_sleep_ms": 50,
+    "stop_on_face_green": false,
+    "stop_confidence": 0.85,
+    "min_workers_per_tick": 1,
+    "max_workers_per_tick": 3
+  },
+  "synapse": {
+    "default_weight": 0.5,
+    "learn_rate": 0.12,
+    "decay": 0.02,
+    "min_weight": 0.05,
+    "max_weight": 0.95,
+    "hebbian": true,
+    "prefer_high_weight": true
+  },
+  "gate": {
+    "require_face_text": true,
+    "false_green": 0
+  },
+  "workers_pool": [
+    "m2m-probe",
+    "m2m-scout",
+    "m2m-map",
+    "m2m-plan",
+    "m2m-tool",
+    "m2m-code",
+    "m2m-parse",
+    "m2m-ops",
+    "m2m-left",
+    "m2m-seal",
+    "m2m-flash",
+    "m2m-recall",
+    "m2m-right",
+    "m2m-critic",
+    "m2m-rank",
+    "m2m-watch",
+    "m2m-route",
+    "m2m-drone",
+    "m2m-bus",
+    "m2m-callosum"
+  ],
+  "super_mesh": true,
+  "flagships": {
+    "reason": "fx-reason",
+    "face": "fx-face"
+  }
+}

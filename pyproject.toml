@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dronehive"
-version = "2.0.0"
+version = "2.1.0"
 description = "DroneHive + Pro v2: modular swarm, free-form Ollama tool agent, desktop apps, universal links"
 readme = "README.md"
 license = "MIT"
@@ -51,7 +51,7 @@ Repository = "https://github.com/yuro1991-afk/dronehive"
 Issues = "https://github.com/yuro1991-afk/dronehive/issues"
 
 [project.scripts]
-# Python CLI (not the Rust TUI — use dronehive-tui.cmd / START_TUI.bat for console UI)
+# Python CLI (not the Rust TUI â€” use dronehive-tui.cmd / START_TUI.bat for console UI)
 dronehive = "drone.app.cli:main"
 drone-hive = "drone.app.cli:main"
 dronehive-desktop = "drone.app.desktop:main"

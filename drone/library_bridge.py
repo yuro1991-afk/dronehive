@@ -218,6 +218,7 @@ class LibraryBridge:
     def pack_for_buzzer(self, goal: str | None = None) -> dict[str, Any]:
         """
         Fresh data pack a clean-slate buzzer receives from the library/hive feed.
+        Optionally tags that AI bus two-way wire is available (read path).
         """
         status = self.status()
         open_tasks = self.pull_open_tasks()
@@ -245,8 +246,28 @@ class LibraryBridge:
                 if isinstance(hot.get("data"), dict)
                 else []
             ),
+            "ai_bus": {
+                "two_way": True,
+                "module": "drone.ai_bus.AIBus",
+                "read_channels": [
+                    "self_library",
+                    "continuous",
+                    "codex",
+                    "curriculum",
+                    "instai",
+                    "helper_school",
+                    "hive_memory",
+                    "hive_board",
+                    "live_registry",
+                    "ai_smarts",
+                    "reference",
+                    "work_experience",
+                ],
+                "write_on_close": "sync_write",
+            },
             "honesty": {
                 "clean_slate_buzzer_gets": "this pack only + hive durable memory, not prior buzzer RAM",
                 "hot_full_body_included": False,
+                "ai_surfaces_two_way": True,
             },
         }

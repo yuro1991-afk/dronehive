@@ -3,4 +3,4 @@
 __all__ = ["PRO_NAME", "PRO_VERSION"]
 
 PRO_NAME = "DroneHive Pro"
-PRO_VERSION = "2.0.0"
+PRO_VERSION = "2.1.0"

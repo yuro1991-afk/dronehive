@@ -1,0 +1,58 @@
+{
+  "schema": "drone.face_hotwire.v1",
+  "name": "FACE Hotwire",
+  "version": "1.0.0",
+  "law": [
+    "ALL models/hosts hotwired to FACE — no user-facing side channels",
+    "super-llms chat, seer commit, synapse output, drones reports → FACE",
+    "Execute path: precision classify → one best worker + optional tools → FACE",
+    "Speed: warm keep_alive, tiny scout first, heavy only when needed",
+    "false_green: 0"
+  ],
+  "hot": {
+    "keep_alive": "45m",
+    "warm_models": [
+      "llama3.2:3b",
+      "llama3.1:8b",
+      "qwen2.5-coder:7b",
+      "ai-smarts:latest"
+    ],
+    "warm_num_predict": 4,
+    "ping_on_start": true
+  },
+  "speed": {
+    "scout_first": true,
+    "scout_model": "llama3.2:3b",
+    "face_model": "llama3.1:8b",
+    "max_workers_chat": 2,
+    "max_workers_exec": 2,
+    "heavy_limit": 1,
+    "num_predict_scout": 64,
+    "num_predict_worker": 96,
+    "num_predict_face": 220,
+    "timeout_scout_s": 25,
+    "timeout_worker_s": 45,
+    "timeout_face_s": 60
+  },
+  "precision": {
+    "classify_json": true,
+    "execute_verbs": [
+      "run", "exec", "execute", "build", "fix", "install", "start", "stop",
+      "deploy", "test", "create", "write", "delete", "copy", "move", "open"
+    ],
+    "modes": {
+      "chat": "council briefs → FACE reply",
+      "exec": "precision plan → tool/drone/worker → FACE result",
+      "status": "probe hosts + FACE summary"
+    }
+  },
+  "bindings": {
+    "super_llms_chat": "face",
+    "seer_commit": "face",
+    "synapse_face": "face",
+    "drone_reports": "face_brief",
+    "hermes": "internal",
+    "openclaw": "internal",
+    "opencode": "internal"
+  }
+}

@@ -35,10 +35,66 @@ Sister honesty: hive ≠ fabric; neither is N full independent LLMs.
 **Lifecycle (law of both swarms):**
 
 ```
-IMPRINT  →  SWARM (execute task)  →  LIVE REGISTRY write
-         →  MEMORY RECYCLE dump  →  DISCARD self
-         →  FRESH DRONE written with NEXT TASK  →  ready to swarm again
+IMPRINT (+ slim school/codex knowledge pack)
+  →  SWARM (execute task)
+  →  LIVE REGISTRY write (local jsonl first; CLI optional)
+  →  MEMORY RECYCLE dump  →  DISCARD self
+  →  FRESH DRONE written with NEXT TASK  →  ready to swarm again
 ```
+
+### Knowledge imprint MAX (capability + latency law)
+
+| Do | Don't |
+|----|--------|
+| Imprint **multi-source** pack at birth: curriculum FTS, **instai** (222 peer lessons), AI Smarts packs, F: PACK+expand, core GCM lessons, reference FTS, in-process codex (+vram) | Run `python -m school daily` per buzzer |
+| Cap bodies (default 5 lessons × ~2.4 KB) + disk cache | Load full curriculum / full ref DB into RAM |
+| **Do lessons** via `do_lesson` with real evidence → `data/hive/school_progress/` | Claim GREEN without source + notes/evidence |
+| Wire seals to hive outbox + `F:\GrokSelfLibrary\knowledge\indexes\drone_imprints.jsonl` | Fake ontology codex writes |
+| Prefer in-process codex (~0–2 ms) | Spawn CLI every unit unless verifying |
+| Local registry jsonl first | Block Super Cell CLI every death unless `registry_sync_cli` |
+
+Runtime: `drone/knowledge_imprint.py` · tools: `knowledge_imprint` · `knowledge_sources` · `do_lesson` · `knowledge_chunk`  
+Config: `knowledge_imprint.mode=max` in `work_order.json`
+
+### AI Bus — two-way wire (all AI surfaces)
+
+| Direction | Meaning |
+|-----------|---------|
+| **READ** | Pull from Self Library, continuous board, codex, curriculum, instai, school, hive memory/board, registry, AI Smarts, reference FTS, work-experience |
+| **WRITE** | Push results back to each surface (or honest index/mirror write when masters must not mutate) |
+| **FULL DUPLEX** | `connect_status` → `sync_read` → `sync_write` |
+
+| Auto hook | Action |
+|-----------|--------|
+| Buzzer death | `AIBus.sync_write(result)` |
+| Pro run seal | `AIBus.full_duplex(goal, result)` |
+
+Runtime: `drone/ai_bus.py` · tools: `ai_bus_status` · `ai_bus_read` · `ai_bus_write` · `ai_bus_sync`  
+Journal: `data/hive/ai_bus/JOURNAL.jsonl` · matrix: `data/hive/ai_bus/CONNECTIONS.json`
+
+### Complete agent loop (closed)
+
+```text
+lanes + bus read
+  → resolve goal (explicit | NEXT | open task)
+  → clean-slate unit imprint (+ knowledge)
+  → execute (fast|full fabric + tools)
+  → hive doc + library note
+  → ai_bus sync_write (12 surfaces)
+  → registry + memory recycle + NEXT
+  → generation ledger
+  → wake next gen from NEXT (optional N times)
+  → Grok cowork collect (inbox/done)
+```
+
+CLI:
+
+```powershell
+python -m drone loop --goal "..." --generations 2 --lane fast
+python -m drone loop --wake-next --generations 1
+```
+
+Seal: `out\AGENT_LOOP_SEAL.json` · module: `drone/agent_loop.py`
 
 ---
 
