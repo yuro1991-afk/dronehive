@@ -1,5 +1,9 @@
 """
-M2M / flagship mesh nodes: one tool + one job each; IDLE until called.
+M2M / flagship mesh nodes:
+  - one UNIQUE tool each
+  - abilities + knowledge STRICTLY for that tool only
+  - IDLE until called
+  - tool_scope = [owned_tool] only
 
 false_green: 0
 """
@@ -23,7 +27,7 @@ def _root() -> Path:
 
 
 class MeshNodeRegistry:
-    """Roster of idle workers; wake only on call_node / call_many."""
+    """Roster of idle workers; unique tool lock; wake only on call."""
 
     def __init__(self, root: Path | None = None) -> None:
         self.root = Path(root or _root())
@@ -32,6 +36,8 @@ class MeshNodeRegistry:
         self.data.mkdir(parents=True, exist_ok=True)
         self.state_path = self.data / "NODE_IDLE_STATE.json"
         self.last_call_path = self.root / "out" / "MESH_NODE_LAST_CALL.json"
+        self.unique_seal_path = self.data / "UNIQUE_TOOL_LOCK.json"
+        self.modelfile_dir = self.root / "models" / "clones" / "m2m_tool_lock"
         self.roster = self._load_roster()
         self.state = self._load_state()
 
@@ -39,6 +45,57 @@ class MeshNodeRegistry:
         if self.roster_path.is_file():
             return json.loads(self.roster_path.read_text(encoding="utf-8"))
         return {"nodes": [], "flagships": [], "idle_policy": {}}
+
+    def validate_unique_tools(self) -> dict[str, Any]:
+        """Every m2m node must own a distinct tool."""
+        nodes = list(self.roster.get("nodes") or [])
+        tools = [str(n.get("tool") or "") for n in nodes]
+        tags = [str(n.get("tag") or "") for n in nodes]
+        missing = [t for t, tool in zip(tags, tools) if not tool]
+        # uniqueness among m2m only
+        seen: dict[str, str] = {}
+        dups: list[dict[str, str]] = []
+        for tag, tool in zip(tags, tools):
+            if not tool:
+                continue
+            if tool in seen:
+                dups.append({"tool": tool, "a": seen[tool], "b": tag})
+            else:
+                seen[tool] = tag
+        # knowledge must scope to owned tool
+        knowledge_violations = []
+        for n in nodes:
+            kn = n.get("knowledge") or {}
+            scope = str(kn.get("scope") or "")
+            tool = str(n.get("tool") or "")
+            if tool and tool not in scope and f"{tool} ONLY" not in scope.upper() and scope.upper() != f"{tool.upper()} ONLY":
+                # allow "list_dir ONLY" style
+                if tool not in scope:
+                    knowledge_violations.append(
+                        {"tag": n.get("tag"), "tool": tool, "scope": scope}
+                    )
+            # abilities present
+            if not (n.get("abilities") or []):
+                knowledge_violations.append(
+                    {"tag": n.get("tag"), "error": "missing_abilities"}
+                )
+        ok = not dups and not missing and len(seen) == len(nodes)
+        # soft: knowledge_violations for empty abilities still fail uniqueness pack
+        if any(v.get("error") == "missing_abilities" for v in knowledge_violations):
+            ok = False
+        return {
+            "schema": "drone.mesh_nodes.unique_tools.v1",
+            "utc": _utc(),
+            "false_green": 0,
+            "ok": ok,
+            "status": "GREEN" if ok and not dups else ("RED" if dups or missing else "PARTIAL"),
+            "m2m_count": len(nodes),
+            "unique_tool_count": len(seen),
+            "tools": seen,
+            "duplicates": dups,
+            "missing_tool": missing,
+            "knowledge_notes": knowledge_violations[:20],
+        }
 
     def _write(self, path: Path, data: Any) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,25 +160,34 @@ class MeshNodeRegistry:
         self._write(self.state_path, self.state)
 
     def hardwire_idle(self) -> dict[str, Any]:
-        """All nodes → IDLE; write durable roster receipt."""
+        """All nodes → IDLE; unique tool lock; write durable roster receipt."""
+        uniq = self.validate_unique_tools()
+        self._write(self.unique_seal_path, uniq)
         for t, row in (self.state.get("nodes") or {}).items():
             row["state"] = "IDLE"
             row["idle"] = True
         self.save_state()
+        mf = self.write_tool_locked_modelfiles()
         receipt = {
-            "schema": "drone.mesh_nodes.hardwire_idle.v1",
+            "schema": "drone.mesh_nodes.hardwire_idle.v2",
             "utc": _utc(),
             "false_green": 0,
-            "status": "GREEN",
+            "status": "GREEN" if uniq.get("ok") else "RED",
             "idle_policy": self.roster.get("idle_policy"),
+            "unique_tools": uniq,
+            "tool_locked_modelfiles": mf.get("count"),
             "nodes": [
                 {
                     "tag": n.get("tag"),
                     "job": n.get("job"),
                     "tool": n.get("tool"),
+                    "abilities": n.get("abilities"),
+                    "knowledge_scope": (n.get("knowledge") or {}).get("scope"),
+                    "forbidden": (n.get("knowledge") or {}).get("forbidden"),
                     "hemi": n.get("hemi"),
                     "state": "IDLE",
                     "idle": True,
+                    "tool_scope": [n.get("tool")],
                 }
                 for n in self.roster.get("nodes") or []
             ],
@@ -130,9 +196,12 @@ class MeshNodeRegistry:
                     "tag": n.get("tag"),
                     "job": n.get("job"),
                     "tool": n.get("tool"),
+                    "abilities": n.get("abilities"),
+                    "knowledge_scope": (n.get("knowledge") or {}).get("scope"),
                     "state": "IDLE",
                     "idle": True,
                     "talks_to_user": n.get("talks_to_user"),
+                    "tool_scope": [n.get("tool")],
                 }
                 for n in self.roster.get("flagships") or []
             ],
@@ -140,9 +209,123 @@ class MeshNodeRegistry:
             "count_flagship": len(self.roster.get("flagships") or []),
             "state_path": str(self.state_path),
             "roster_path": str(self.roster_path),
+            "unique_seal": str(self.unique_seal_path),
         }
         self._write(self.data / "ROSTER_IDLE_HARDWIRE.json", receipt)
         return receipt
+
+    def write_tool_locked_modelfiles(self) -> dict[str, Any]:
+        """Write Ollama Modelfiles: SYSTEM = tool-only knowledge/abilities."""
+        self.modelfile_dir.mkdir(parents=True, exist_ok=True)
+        written = []
+        base = "qwen2.5:0.5b"
+        for n in self.roster.get("nodes") or []:
+            tag = str(n.get("tag") or "")
+            tool = str(n.get("tool") or "")
+            kn = n.get("knowledge") or {}
+            abilities = n.get("abilities") or []
+            sys_txt = str(
+                kn.get("system")
+                or (
+                    f"CHANNEL=M2M. TOOL_LOCK={tool}. "
+                    f"ABILITIES={abilities}. "
+                    f"KNOWLEDGE_SCOPE={kn.get('scope')}. "
+                    f"FORBIDDEN={kn.get('forbidden')}. "
+                    f"Only tool {tool}. No other tools. false_green:0."
+                )
+            ).replace('"""', "'''")
+            body = (
+                f"FROM {base}\n"
+                f"# tool-locked clone · {tag} · UNIQUE tool={tool}\n"
+                f"# abilities={abilities}\n"
+                f"# knowledge_scope={kn.get('scope')}\n"
+                f"# idle_until_called=true\n"
+                f'SYSTEM """{sys_txt}"""\n'
+                f"PARAMETER temperature 0.1\n"
+                f"PARAMETER num_ctx 2048\n"
+            )
+            path = self.modelfile_dir / f"Modelfile.{tag}"
+            path.write_text(body, encoding="utf-8")
+            written.append({"tag": tag, "tool": tool, "path": str(path)})
+        # flagships use stronger bases already installed as fx-*; still write lock notes
+        for n in self.roster.get("flagships") or []:
+            tag = str(n.get("tag") or "")
+            tool = str(n.get("tool") or "")
+            kn = n.get("knowledge") or {}
+            frm = "qwen2.5:3b" if tag == "fx-reason" else "llama3.1:8b"
+            sys_txt = str(kn.get("system") or f"TOOL_LOCK={tool}").replace('"""', "'''")
+            body = (
+                f"FROM {frm}\n"
+                f"# flagship tool-lock · {tag} · tool={tool}\n"
+                f'SYSTEM """{sys_txt}"""\n'
+                f"PARAMETER temperature 0.2\n"
+                f"PARAMETER num_ctx 8192\n"
+            )
+            path = self.modelfile_dir / f"Modelfile.{tag}"
+            path.write_text(body, encoding="utf-8")
+            written.append({"tag": tag, "tool": tool, "path": str(path), "flagship": True})
+        manifest = {
+            "schema": "drone.mesh_nodes.tool_locked_modelfiles.v1",
+            "utc": _utc(),
+            "false_green": 0,
+            "count": len(written),
+            "dir": str(self.modelfile_dir),
+            "files": written,
+        }
+        self._write(self.data / "TOOL_LOCKED_MODELFILES.json", manifest)
+        return manifest
+
+    def install_tool_locked_clones(self) -> dict[str, Any]:
+        """ollama create tool-locked m2m tags (re-system from Modelfiles)."""
+        import os
+        import shutil
+        import subprocess
+
+        self.write_tool_locked_modelfiles()
+        ollama = os.environ.get("OLLAMA_EXE") or shutil.which("ollama") or (
+            str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe")
+        )
+        results = []
+        for n in self.roster.get("nodes") or []:
+            tag = str(n.get("tag") or "")
+            mf = self.modelfile_dir / f"Modelfile.{tag}"
+            if not mf.is_file():
+                results.append({"tag": tag, "ok": False, "error": "missing_modelfile"})
+                continue
+            try:
+                p = subprocess.run(
+                    [ollama, "create", tag, "-f", str(mf)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                results.append(
+                    {
+                        "tag": tag,
+                        "tool": n.get("tool"),
+                        "ok": p.returncode == 0,
+                        "status": "GREEN" if p.returncode == 0 else "RED",
+                        "returncode": p.returncode,
+                        "stderr_tail": (p.stderr or "")[-200:],
+                        "false_green": 0,
+                    }
+                )
+            except Exception as e:
+                results.append({"tag": tag, "ok": False, "error": str(e), "false_green": 0})
+        green = sum(1 for r in results if r.get("ok"))
+        seal = {
+            "schema": "drone.mesh_nodes.install_tool_lock.v1",
+            "utc": _utc(),
+            "false_green": 0,
+            "status": "GREEN" if green == len(results) and results else (
+                "PARTIAL" if green else "RED"
+            ),
+            "installed_ok": green,
+            "total": len(results),
+            "results": results,
+        }
+        self._write(self.data / "TOOL_LOCK_INSTALL.json", seal)
+        return seal
 
     def status(self) -> dict[str, Any]:
         rows = []
@@ -277,11 +460,28 @@ class MeshNodeRegistry:
             if name == "run_host_diagnostics":
                 return toolkit.run_host_diagnostics()
             if name == "write_and_smoke_python":
-                return toolkit.write_and_smoke_python(**args)
+                return toolkit.write_and_smoke_python(
+                    module_slug=str(args.get("module_slug") or "m2m_drone_smoke"),
+                    source=str(args.get("source") or ""),
+                    timeout_s=int(args.get("timeout_s") or 45),
+                )
             if name == "clone_app":
                 return toolkit.clone_app(
                     dest=str(args.get("dest") or ""),
                     include_data=bool(args.get("include_data") or False),
+                )
+            if name == "knowledge_imprint":
+                return toolkit.knowledge_imprint(goal=str(args.get("goal") or goal if False else args.get("goal") or "mesh"))
+            if name == "knowledge_chunk":
+                return toolkit.knowledge_chunk(
+                    md_path=str(args.get("md_path") or ""),
+                    max_chars=int(args.get("max_chars") or 1600),
+                )
+            if name == "do_lesson":
+                return toolkit.do_lesson(
+                    lesson_id=str(args.get("lesson_id") or args.get("lesson") or ""),
+                    notes=str(args.get("notes") or ""),
+                    evidence_rel=str(args.get("evidence_rel") or ""),
                 )
             return {"tool": name, "ok": False, "error": f"unknown tool {name}", "false_green": 0}
         except Exception as e:
@@ -320,24 +520,60 @@ class MeshNodeRegistry:
         self.save_state()
 
         tid = task_id or f"mesh_call_{tag.replace(':', '_')}"
-        # Node only sees its own tool in scope
-        owned = str(meta.get("tool") or "list_tools")
+        owned = str(meta.get("tool") or "")
+        kn = meta.get("knowledge") or {}
+        abilities = list(meta.get("abilities") or [])
+        # STRICT: only owned tool in scope — never the full belt
         toolkit = DroneToolkit(
             self.root,
             task_id=tid,
-            tool_scope=[owned, "list_tools"],
+            tool_scope=[owned] if owned else [],
             unit_id=tag,
         )
         args = dict(meta.get("tool_args_default") or {})
         if tool_args:
+            # strip unknown keys not for this tool — keep only provided overrides
             args.update(tool_args)
+
+        # Special defaults that need required kwargs
+        if owned == "write_and_smoke_python":
+            args.setdefault("module_slug", "m2m_drone_smoke")
+            args.setdefault(
+                "source",
+                (
+                    "def main():\n"
+                    "    print('SMOKE_OK')\n"
+                    "    return True\n\n"
+                    "if __name__ == '__main__':\n"
+                    "    main()\n"
+                ),
+            )
 
         tool_result: dict[str, Any] = {"tool": owned, "ok": False, "skipped": True}
         if run_tool:
-            tool_result = self._dispatch_tool(toolkit, owned, args)
-            # normalize ok
-            if "ok" not in tool_result:
-                tool_result["ok"] = not bool(tool_result.get("error"))
+            if not owned:
+                tool_result = {
+                    "tool": "",
+                    "ok": False,
+                    "error": "node has no owned tool",
+                    "false_green": 0,
+                }
+            else:
+                tool_result = self._dispatch_tool(toolkit, owned, args)
+                if "ok" not in tool_result:
+                    tool_result["ok"] = not bool(tool_result.get("error"))
+                # prove foreign tool is blocked
+                foreign = self._dispatch_tool(
+                    toolkit,
+                    "run_shell" if owned != "run_shell" else "write_text",
+                    {"command": "echo blocked", "rel_path": "x", "content": "x"},
+                )
+                tool_result["foreign_tool_blocked"] = (
+                    foreign.get("ok") is False
+                    or "not in scope" in str(foreign.get("error") or "").lower()
+                    or "tool not in scope" in str(foreign.get("error") or "").lower()
+                    or not foreign.get("ok")
+                )
 
         # sleep again
         st["state"] = "IDLE"
@@ -347,12 +583,17 @@ class MeshNodeRegistry:
         self.save_state()
 
         out = {
-            "schema": "drone.mesh_nodes.call.v1",
+            "schema": "drone.mesh_nodes.call.v2",
             "utc": _utc(),
             "false_green": 0,
             "tag": tag,
             "job": meta.get("job"),
             "tool": owned,
+            "tool_scope": [owned],
+            "abilities": abilities,
+            "knowledge_scope": kn.get("scope"),
+            "knowledge_forbidden": kn.get("forbidden"),
+            "knowledge_args_schema": kn.get("args_schema"),
             "hemi": meta.get("hemi"),
             "goal": goal,
             "was_idle": True,
@@ -376,6 +617,7 @@ class MeshNodeRegistry:
                     "tools",
                     "file_count",
                     "text",
+                    "foreign_tool_blocked",
                 )
                 if k in tool_result
             },
