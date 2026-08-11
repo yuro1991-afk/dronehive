@@ -65,3 +65,8 @@ Desktop.ini
 release/*.zip
 release/*.whl
 !release/.gitkeep
+
+# Rust
+target/
+**/target/
+
