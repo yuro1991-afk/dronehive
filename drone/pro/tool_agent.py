@@ -404,6 +404,8 @@ def run_pro_agent(
         except Exception:
             model = None
             _chat("system", "brain resolve failed · will use tools safety net")
+    elif not use_ollama:
+        _chat("system", "ollama disabled (--no-ollama) · heuristic deliverable path")
     else:
         _chat("system", "ollama offline · heuristic deliverable path")
 

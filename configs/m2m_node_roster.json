@@ -1,12 +1,13 @@
 {
-  "schema": "drone.m2m_node_roster.v1",
-  "name": "M2M node roster — one tool + one job each; idle until called",
-  "version": "1.0.0",
+  "schema": "drone.m2m_node_roster.v2",
+  "name": "M2M node roster — UNIQUE tool each; knowledge/abilities STRICT to that tool only",
+  "version": "2.0.0",
   "law": [
-    "Each m2m node owns exactly ONE primary tool and ONE job",
-    "Default state = IDLE — no Ollama fire, no tool call until called",
-    "Only router / fx-reason / explicit call_node wakes a node",
-    "On call: run job brief (optional LM) then execute owned tool if args provided",
+    "Each m2m node owns exactly ONE unique tool (no shared tools across m2m nodes)",
+    "Abilities + knowledge are STRICTLY for that tool only — no other tool APIs, args, or skills",
+    "Default state = IDLE until called",
+    "tool_scope on DroneToolkit = [owned_tool] only (not full belt)",
+    "Ollama SYSTEM for clone = tool-locked channel only",
     "false_green: 0"
   ],
   "idle_policy": {
@@ -15,212 +16,555 @@
     "wake_only_when_called": true,
     "sleep_after_call": true
   },
+  "uniqueness": {
+    "require_unique_tools_among_m2m": true,
+    "forbid_cross_tool_knowledge": true
+  },
   "nodes": [
     {
       "tag": "m2m-probe",
-      "job": "Research probe — scan facts, unknowns, paths",
+      "job": "Workspace probe — list directories only",
       "tool": "list_dir",
       "tool_args_default": { "rel": "." },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "list_workspace_entries",
+        "report_entry_count",
+        "return_safe_sandbox_paths_only"
+      ],
+      "knowledge": {
+        "scope": "list_dir ONLY",
+        "knows": [
+          "workspace relative paths",
+          "sandbox list_dir API: args.rel",
+          "max 100 names returned"
+        ],
+        "forbidden": [
+          "read file contents",
+          "write files",
+          "shell",
+          "llm chat",
+          "any other tool name"
+        ],
+        "args_schema": { "rel": "string relative path, default ." },
+        "system": "CHANNEL=M2M. TOOL_LOCK=list_dir. You only know list_dir. On call emit JSON for list_dir args only. No other tools. NO_USER_ADDRESS. false_green:0."
+      }
     },
     {
       "tag": "m2m-scout",
-      "job": "Intent scout — classify goal keywords",
+      "job": "Tool inventory scout — list_tools only",
       "tool": "list_tools",
       "tool_args_default": {},
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "enumerate_scoped_tools",
+        "report_tool_count"
+      ],
+      "knowledge": {
+        "scope": "list_tools ONLY",
+        "knows": [
+          "list_tools API with no args",
+          "returns tools[] for THIS node scope only"
+        ],
+        "forbidden": ["execute other tools", "shell", "file write"],
+        "args_schema": {},
+        "system": "CHANNEL=M2M. TOOL_LOCK=list_tools. You only know list_tools. Discover available tool names in scope. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-flash",
-      "job": "Flash brief — max-density one-liner for conductor",
+      "job": "Integrity flash — hash_text only",
       "tool": "hash_text",
       "tool_args_default": { "text": "mesh-flash" },
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "sha256_hash_string",
+        "length_of_input"
+      ],
+      "knowledge": {
+        "scope": "hash_text ONLY",
+        "knows": [
+          "hash_text args: text",
+          "returns sha256 hex"
+        ],
+        "forbidden": ["crypto beyond sha256 via this tool", "file read", "network"],
+        "args_schema": { "text": "string to hash" },
+        "system": "CHANNEL=M2M. TOOL_LOCK=hash_text. Only hash_text. Emit text to hash. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-map",
-      "job": "Structure map — tree/edges of workspace",
-      "tool": "list_dir",
-      "tool_args_default": { "rel": "." },
-      "hemi": "left",
-      "idle": true,
-      "state": "IDLE"
-    },
-    {
-      "tag": "m2m-plan",
-      "job": "Planner — steps and stop conditions",
-      "tool": "write_json",
+      "job": "Map writer — write_text only",
+      "tool": "write_text",
       "tool_args_default": {
-        "rel_path": "plan_packet.json",
-        "data": { "role": "plan", "status": "draft" }
+        "rel_path": "map.txt",
+        "content": "m2m-map structure map\n"
       },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "write_sandbox_text_file",
+        "create_parent_dirs",
+        "report_bytes_written"
+      ],
+      "knowledge": {
+        "scope": "write_text ONLY",
+        "knows": [
+          "write_text args: rel_path, content",
+          "sandbox path rules",
+          "empty writes rejected by agent law elsewhere"
+        ],
+        "forbidden": ["read_text", "overwrite outside sandbox", "shell"],
+        "args_schema": {
+          "rel_path": "relative path under workspace",
+          "content": "utf-8 text"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=write_text. Only write_text. Provide rel_path+content. No other tools. false_green:0."
+      }
+    },
+    {
+      "tag": "m2m-plan",
+      "job": "Plan packet — write_json only",
+      "tool": "write_json",
+      "tool_args_default": {
+        "rel_path": "plan_packet.json",
+        "data": { "role": "plan", "status": "draft", "false_green": 0 }
+      },
+      "hemi": "left",
+      "idle": true,
+      "state": "IDLE",
+      "abilities": [
+        "serialize_json_to_workspace",
+        "structure_plan_objects"
+      ],
+      "knowledge": {
+        "scope": "write_json ONLY",
+        "knows": [
+          "write_json args: rel_path, data(object)",
+          "pretty JSON indent 2"
+        ],
+        "forbidden": ["arbitrary code", "shell", "read other tools"],
+        "args_schema": {
+          "rel_path": "string",
+          "data": "json object"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=write_json. Only write_json plan packets. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-code",
-      "job": "Code micro — patch sketch via python smoke",
+      "job": "Code runner — run_python only",
       "tool": "run_python",
-      "tool_args_default": { "code": "print('m2m-code-idle-ok')" },
+      "tool_args_default": { "code": "print('m2m-code-ok')" },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "run_python_snippet_in_sandbox",
+        "capture_stdout_stderr",
+        "timeout_bound_execution"
+      ],
+      "knowledge": {
+        "scope": "run_python ONLY",
+        "knows": [
+          "run_python args: code, timeout_s",
+          "cwd=workspace",
+          "writes _drone_snip.py"
+        ],
+        "forbidden": ["run_shell", "system-wide installs", "network tools"],
+        "args_schema": {
+          "code": "python source string",
+          "timeout_s": "int seconds default 30"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=run_python. Only run_python. Emit code snippets. No shell. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-ops",
-      "job": "Ops status — host diagnostics",
+      "job": "Host ops — run_host_diagnostics only",
       "tool": "run_host_diagnostics",
       "tool_args_default": {},
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "collect_host_diagnostics_snapshot",
+        "report_ops_health_fields"
+      ],
+      "knowledge": {
+        "scope": "run_host_diagnostics ONLY",
+        "knows": [
+          "run_host_diagnostics API",
+          "returns host diagnostic record"
+        ],
+        "forbidden": ["arbitrary shell", "modify host config", "other tools"],
+        "args_schema": { "force": "optional bool" },
+        "system": "CHANNEL=M2M. TOOL_LOCK=run_host_diagnostics. Only this tool. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-critic",
-      "job": "Critic — PASS/FAIL on evidence",
+      "job": "Evidence critic — read_text only",
       "tool": "read_text",
       "tool_args_default": { "rel_path": "plan_packet.json" },
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "read_workspace_or_artifact_text",
+        "truncate_to_max_chars",
+        "report_missing_files"
+      ],
+      "knowledge": {
+        "scope": "read_text ONLY",
+        "knows": [
+          "read_text args: rel_path, max_chars",
+          "sandbox + artifacts + out roots"
+        ],
+        "forbidden": ["write", "delete", "shell", "judge without file content"],
+        "args_schema": {
+          "rel_path": "string",
+          "max_chars": "int default 6000"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=read_text. Only read_text for evidence. No write. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-route",
-      "job": "Router — pick next worker tag",
-      "tool": "llm_list",
-      "tool_args_default": {},
+      "job": "LLM router — llm_route only",
+      "tool": "llm_route",
+      "tool_args_default": { "goal": "mesh route" },
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "route_goal_to_model_or_role",
+        "return_routing_decision"
+      ],
+      "knowledge": {
+        "scope": "llm_route ONLY",
+        "knows": [
+          "llm_route args: goal, optional role",
+          "routing table concepts"
+        ],
+        "forbidden": ["llm_chat full dialogue", "generate long prose", "other tools"],
+        "args_schema": {
+          "goal": "string",
+          "role": "optional string"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=llm_route. Only llm_route. Pick route for goal. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-recall",
-      "job": "Memory recall — knowledge sources",
+      "job": "Knowledge recall — knowledge_sources only",
       "tool": "knowledge_sources",
       "tool_args_default": {},
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "list_knowledge_sources",
+        "report_source_catalog"
+      ],
+      "knowledge": {
+        "scope": "knowledge_sources ONLY",
+        "knows": [
+          "knowledge_sources API",
+          "library source inventory"
+        ],
+        "forbidden": ["knowledge_imprint write", "knowledge_chunk deep read via other tool", "shell"],
+        "args_schema": {},
+        "system": "CHANNEL=M2M. TOOL_LOCK=knowledge_sources. Only knowledge_sources. No imprint. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-tool",
-      "job": "Tool planner — discover tool pack",
-      "tool": "list_tools",
-      "tool_args_default": {},
+      "job": "Knowledge imprint — knowledge_imprint only",
+      "tool": "knowledge_imprint",
+      "tool_args_default": { "goal": "mesh imprint" },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "imprint_goal_into_knowledge",
+        "return_imprint_receipt"
+      ],
+      "knowledge": {
+        "scope": "knowledge_imprint ONLY",
+        "knows": [
+          "knowledge_imprint args: goal",
+          "writes imprint artifacts under knowledge system"
+        ],
+        "forbidden": ["arbitrary file write", "knowledge_sources list", "shell"],
+        "args_schema": { "goal": "string" },
+        "system": "CHANNEL=M2M. TOOL_LOCK=knowledge_imprint. Only knowledge_imprint. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-bus",
-      "job": "AI bus — status + packet transit",
+      "job": "AI bus status — ai_bus_status only",
       "tool": "ai_bus_status",
       "tool_args_default": {},
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "report_ai_bus_health",
+        "list_bus_channels_status"
+      ],
+      "knowledge": {
+        "scope": "ai_bus_status ONLY",
+        "knows": [
+          "ai_bus_status API",
+          "bus channel health fields"
+        ],
+        "forbidden": ["ai_bus_write", "ai_bus_read", "ai_bus_sync"],
+        "args_schema": {},
+        "system": "CHANNEL=M2M. TOOL_LOCK=ai_bus_status. Only ai_bus_status. No write/read/sync. false_green:0."
+      }
     },
     {
       "tag": "m2m-left",
-      "job": "Left hemisphere serial logic brief",
+      "job": "Left log — append_log only",
       "tool": "append_log",
       "tool_args_default": { "line": "m2m-left called" },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "append_jsonl_log_line",
+        "task_scoped_log_path"
+      ],
+      "knowledge": {
+        "scope": "append_log ONLY",
+        "knows": [
+          "append_log args: line",
+          "logs under data/tool_logs/<task>.jsonl"
+        ],
+        "forbidden": ["read_log as other tool", "write_text", "shell"],
+        "args_schema": { "line": "string max ~2000" },
+        "system": "CHANNEL=M2M. TOOL_LOCK=append_log. Only append_log. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-right",
-      "job": "Right hemisphere pattern brief",
+      "job": "Board list — board_list only",
       "tool": "board_list",
-      "tool_args_default": {},
+      "tool_args_default": { "limit": 20 },
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "list_hive_board_chunks",
+        "filter_by_kind"
+      ],
+      "knowledge": {
+        "scope": "board_list ONLY",
+        "knows": [
+          "board_list args: kind, limit",
+          "hive board listing"
+        ],
+        "forbidden": ["board_publish", "board_get", "other tools"],
+        "args_schema": {
+          "kind": "optional string",
+          "limit": "int default 20"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=board_list. Only board_list. No publish/get. false_green:0."
+      }
     },
     {
       "tag": "m2m-callosum",
-      "job": "Callosum merge — bus write merged packet",
+      "job": "Bus write merge — ai_bus_write only",
       "tool": "ai_bus_write",
-      "tool_args_default": {},
+      "tool_args_default": {
+        "channel": "self_library",
+        "notes": "m2m-callosum merge",
+        "status": "PARTIAL"
+      },
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "write_ai_bus_packet",
+        "set_channel_notes_status"
+      ],
+      "knowledge": {
+        "scope": "ai_bus_write ONLY",
+        "knows": [
+          "ai_bus_write args: channel, notes, status",
+          "outbox path receipt"
+        ],
+        "forbidden": ["ai_bus_status", "ai_bus_read", "ai_bus_sync"],
+        "args_schema": {
+          "channel": "string",
+          "notes": "string",
+          "status": "PARTIAL|GREEN|RED"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=ai_bus_write. Only ai_bus_write merge packets. No other bus tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-seal",
-      "job": "Seal gate — package manifest evidence",
+      "job": "Seal package — package_manifest only",
       "tool": "package_manifest",
-      "tool_args_default": { "extra": { "node": "m2m-seal" } },
+      "tool_args_default": { "extra": { "node": "m2m-seal", "false_green": 0 } },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "package_workspace_artifact_manifest",
+        "count_files_in_manifest"
+      ],
+      "knowledge": {
+        "scope": "package_manifest ONLY",
+        "knows": [
+          "package_manifest args: extra object",
+          "writes artifacts/MANIFEST.json"
+        ],
+        "forbidden": ["clone_app", "copy_to_artifacts", "shell"],
+        "args_schema": { "extra": "object" },
+        "system": "CHANNEL=M2M. TOOL_LOCK=package_manifest. Only package_manifest. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-watch",
-      "job": "Health watch — shell allowlist pulse",
+      "job": "Watch pulse — run_shell only (allowlist)",
       "tool": "run_shell",
       "tool_args_default": { "command": "echo m2m-watch-ok" },
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "run_allowlisted_shell",
+        "capture_returncode_stdout"
+      ],
+      "knowledge": {
+        "scope": "run_shell ONLY",
+        "knows": [
+          "run_shell args: command, timeout_s",
+          "allowlist: dir type echo where python py pip git ollama nvidia-smi ping fsutil wmic powershell pwsh cmd"
+        ],
+        "forbidden": ["non-allowlisted commands", "run_python", "file tools"],
+        "args_schema": {
+          "command": "allowlisted shell string",
+          "timeout_s": "int default 45"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=run_shell. Only allowlisted run_shell. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-parse",
-      "job": "Parse/extract — read structured files",
-      "tool": "read_text",
-      "tool_args_default": { "rel_path": "out.txt" },
+      "job": "Parse chunk — knowledge_chunk only",
+      "tool": "knowledge_chunk",
+      "tool_args_default": { "md_path": "", "max_chars": 1600 },
       "hemi": "left",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "extract_knowledge_chunk",
+        "bound_max_chars"
+      ],
+      "knowledge": {
+        "scope": "knowledge_chunk ONLY",
+        "knows": [
+          "knowledge_chunk args: md_path, max_chars",
+          "markdown chunk extraction"
+        ],
+        "forbidden": ["read_text general", "write", "shell"],
+        "args_schema": {
+          "md_path": "string path",
+          "max_chars": "int"
+        },
+        "system": "CHANNEL=M2M. TOOL_LOCK=knowledge_chunk. Only knowledge_chunk. No other tools. false_green:0."
+      }
     },
     {
       "tag": "m2m-rank",
-      "job": "Rank/score options — hash + score stub",
-      "tool": "hash_text",
-      "tool_args_default": { "text": "rank" },
+      "job": "Model rank list — llm_list only",
+      "tool": "llm_list",
+      "tool_args_default": {},
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "list_available_llms",
+        "include_cloud_flag"
+      ],
+      "knowledge": {
+        "scope": "llm_list ONLY",
+        "knows": [
+          "llm_list API",
+          "local/cloud model inventory"
+        ],
+        "forbidden": ["llm_chat", "llm_generate", "llm_route"],
+        "args_schema": { "include_cloud": "optional bool" },
+        "system": "CHANNEL=M2M. TOOL_LOCK=llm_list. Only llm_list. No chat/generate/route. false_green:0."
+      }
     },
     {
       "tag": "m2m-drone",
-      "job": "Generic drone worker — write status proof",
-      "tool": "write_text",
-      "tool_args_default": {
-        "rel_path": "drone_status.txt",
-        "content": "m2m-drone IDLE→CALLED\n"
-      },
+      "job": "Smoke coder — write_and_smoke_python only",
+      "tool": "write_and_smoke_python",
+      "tool_args_default": {},
       "hemi": "right",
       "idle": true,
-      "state": "IDLE"
+      "state": "IDLE",
+      "abilities": [
+        "write_python_and_smoke_run",
+        "return_smoke_receipt"
+      ],
+      "knowledge": {
+        "scope": "write_and_smoke_python ONLY",
+        "knows": [
+          "write_and_smoke_python API",
+          "write+execute smoke pattern"
+        ],
+        "forbidden": ["run_python alone", "run_shell", "clone_app"],
+        "args_schema": "tool-specific kwargs only",
+        "system": "CHANNEL=M2M. TOOL_LOCK=write_and_smoke_python. Only this tool. No other tools. false_green:0."
+      }
     }
   ],
   "flagships": [
     {
       "tag": "fx-reason",
-      "job": "Mesh conductor — call nodes, merge packets, plan tools",
-      "tool": "llm_route",
+      "job": "Mesh conductor — llm_chat only (AI2AI)",
+      "tool": "llm_chat",
       "tool_args_default": {},
       "idle": true,
       "state": "IDLE",
-      "talks_to_user": false
+      "talks_to_user": false,
+      "abilities": ["llm_chat_conduct"],
+      "knowledge": {
+        "scope": "llm_chat ONLY",
+        "knows": ["llm_chat for mesh conduct"],
+        "forbidden": ["user face speech", "m2m tools"],
+        "system": "CHANNEL=AI2AI. TOOL_LOCK=llm_chat. Conduct mesh. No user address. false_green:0."
+      }
     },
     {
       "tag": "fx-face",
-      "job": "User face — only pole that speaks to user",
+      "job": "User face — board_publish only (plus FACE speech via model)",
       "tool": "board_publish",
-      "tool_args_default": {},
+      "tool_args_default": { "kind": "note" },
       "idle": true,
       "state": "IDLE",
-      "talks_to_user": true
+      "talks_to_user": true,
+      "abilities": ["board_publish_user_facing_note"],
+      "knowledge": {
+        "scope": "board_publish ONLY as tool",
+        "knows": ["board_publish kind+payload"],
+        "forbidden": ["m2m tools", "silent false green"],
+        "system": "CHANNEL=FACE. TOOL_LOCK=board_publish for tool side. User speech allowed via FACE model. false_green:0."
+      }
     }
   ]
 }
