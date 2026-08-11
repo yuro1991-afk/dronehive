@@ -12,8 +12,8 @@ from .protocol import ALLOWED_CONTROLLERS, ControllerIdentity
 
 def make_lm_fn(kind: str) -> Callable[[str], str] | None:
     """
-    Optional shared LM assist for drones (ONE backend, not per-drone model).
-    kind=ollama → top installed Ollama model (gemma4:12b preferred on this host).
+    Optional shared LM assist for drones (ONE Ollama server, not per-drone model).
+    kind=ollama → top installed Ollama model for general notes.
     """
     k = (kind or "none").lower().strip()
     if k in {"none", "off", ""}:
@@ -30,6 +30,26 @@ def make_lm_fn(kind: str) -> Callable[[str], str] | None:
         # local controller without LM is fine; use none
         return None
     return None
+
+
+def make_code_lm_fn(kind: str = "ollama") -> Callable[[str], str] | None:
+    """
+    Second Ollama model (llama3.1:8b class) for real .py workload.
+    Same server, sequential lock — not a second daemon unless user sets host.
+    """
+    k = (kind or "none").lower().strip()
+    if k in {"none", "off", ""}:
+        return None
+    if k in {"ollama", "top", "local-ollama", "code", "8b", "1.8"}:
+        from .ollama_brain import make_code_lm_fn as _mk
+
+        return _mk(num_predict=int(os.environ.get("DRONE_CODE_NUM_PREDICT", "768")))
+    return None
+
+
+def make_dual_ollama() -> tuple[Callable[[str], str] | None, Callable[[str], str] | None]:
+    """Commander/top LM + code worker (8b)."""
+    return make_lm_fn("ollama"), make_code_lm_fn("ollama")
 
 
 def _ollama_fn(prompt: str) -> str:

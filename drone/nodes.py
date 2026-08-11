@@ -43,6 +43,7 @@ class DroneNode:
     skill_tags: list[str]
     memory: WorkMemory
     lm_fn: Callable[[str], str] | None = None
+    code_lm_fn: Callable[[str], str] | None = None  # second Ollama 8b code worker
     toolkit: DroneToolkit | None = None
     lm_roles: frozenset[str] = field(default_factory=lambda: _LM_ROLES)
 
@@ -92,6 +93,8 @@ class DroneNode:
         # --- REAL TOOLS (all roles when toolkit present) ---
         if self.toolkit is not None:
             use_lm = self.lm_fn if self.role in self.lm_roles else None
+            # execute uses code worker (8b); other LM roles use general lm_fn
+            use_code = self.code_lm_fn if self.role in {"execute", "critic"} else None
             dispatched = role_tool_dispatch(
                 self.toolkit,
                 role=self.role,
@@ -100,6 +103,7 @@ class DroneNode:
                 hemisphere=self.hemisphere,
                 strength=strength,
                 lm_fn=use_lm,
+                code_lm_fn=use_code,
                 prior_notes=prior,
                 wins_n=len(wins),
             )
@@ -130,7 +134,19 @@ class DroneNode:
                     steps.append(f"lm_assist_error: {e}")
 
         output = "\n".join(steps)
+        hard_fail = False
+        if self.toolkit is not None:
+            hard_fail = bool(dispatched.get("hard_fail"))
+        critical = self.role in {
+            "execute",
+            "critic",
+            "verify",
+            "revise",
+            "seal",
+        }
         if not task.goal.strip():
+            outcome = "fail"
+        elif critical and (not tool_ok or hard_fail):
             outcome = "fail"
         elif tool_ok:
             outcome = "success"
@@ -148,10 +164,11 @@ class DroneNode:
         )
 
         ms = (time.perf_counter() - t0) * 1000
+        node_ok = outcome != "fail"
         result = NodeResult(
             node_id=self.node_id,
             hemisphere=self.hemisphere,
-            ok=outcome != "fail",
+            ok=node_ok,
             output=output,
             evidence=evidence,
             skill_tags=self.skill_tags,
@@ -160,9 +177,12 @@ class DroneNode:
                 "xp_gain": learned.get("xp_gain"),
                 "skills_n": len(learned.get("skills", [])),
                 "tools": bool(self.toolkit),
+                "hard_fail": hard_fail,
             },
             duration_ms=round(ms, 2),
         )
+        # Critical role failure can veto hemisphere continuation
+        veto = critical and not node_ok
         handoff = HandoffPacket(
             from_node=self.node_id,
             to_node="",
@@ -171,12 +191,13 @@ class DroneNode:
             evidence=evidence,
             notes=body[:500],
             next_action=f"continue_after_{self.node_id}",
-            veto=False,
+            veto=veto,
             skill_tags=self.skill_tags,
             metrics={
                 "strength": strength,
                 "xp_gain": result.xp_gain,
                 "tools": bool(self.toolkit),
+                "hard_fail": hard_fail,
             },
         )
         return result, handoff

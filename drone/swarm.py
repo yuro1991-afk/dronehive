@@ -51,6 +51,7 @@ class DroneSwarm:
         self.lm_fn = lm_fn
         # Machine fit: 12GB / Ollama parallel lane — default 3 concurrent fabric goals
         self.max_workers = max(1, min(int(max_workers), 8))
+        # auto-wires code_lm (8b) when Ollama models present
         self.fabric = BrainFabric(self.root, lm_fn=lm_fn, enable_tools=True)
 
     def _run_one_imprinted(

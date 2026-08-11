@@ -103,6 +103,18 @@ class DroneHiveService:
             "false_green": 0,
         }
 
+    def brain_command(self, user_command: str) -> dict[str, Any]:
+        """
+        Main input path: user command → Ollama brain plans → swarm/ops execute.
+
+        Writes out/BRAIN_LAST_PLAN.json + out/BRAIN_DELEGATE_LAST.json.
+        """
+        from drone.app.brain_delegate import brain_command as _brain
+
+        seal = _brain(self, user_command)
+        self._write_outbox("brain", seal)
+        return seal
+
     def run_task(
         self,
         goal: str,

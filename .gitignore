@@ -19,6 +19,7 @@ ENV/
 # Build / freeze
 build/
 dist/
+**/target/
 *.spec.bak
 pip-wheel-metadata/
 

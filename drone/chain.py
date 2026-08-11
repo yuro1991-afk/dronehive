@@ -69,6 +69,7 @@ class BrainFabric:
         self,
         root: Path,
         lm_fn: Callable[[str], str] | None = None,
+        code_lm_fn: Callable[[str], str] | None = None,
         enable_tools: bool = True,
     ) -> None:
         self.root = Path(root)
@@ -78,6 +79,35 @@ class BrainFabric:
         )
         self.memory = WorkMemory(self.root, learn_cfg)
         self.lm_fn = lm_fn
+        # LEASH: code worker (8b) is OFF unless DRONE_CODE_ENABLE=1
+        # Prevents silent 8B loads thrashing 12GB on every fabric run.
+        if code_lm_fn is None:
+            import os as _os
+
+            unleashed = (_os.environ.get("DRONE_CODE_ENABLE") or "").strip() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            leash_off = (_os.environ.get("DRONE_LEASH") or "1").strip() in {
+                "0",
+                "false",
+                "off",
+            }
+            if unleashed or leash_off:
+                try:
+                    from .ollama_brain import list_local_models, make_code_lm_fn
+
+                    if list_local_models():
+                        code_lm_fn = make_code_lm_fn(
+                            num_predict=int(
+                                _os.environ.get("DRONE_CODE_NUM_PREDICT", "512")
+                            )
+                        )
+                except Exception:
+                    code_lm_fn = None
+        self.code_lm_fn = code_lm_fn
         self.enable_tools = enable_tools
         self.left_ids: list[str] = list(self.cfg["hemispheres"]["left"]["nodes"])
         self.right_ids: list[str] = list(self.cfg["hemispheres"]["right"]["nodes"])
@@ -92,6 +122,7 @@ class BrainFabric:
                 skill_tags=_tags_for(role, "L"),
                 memory=self.memory,
                 lm_fn=lm_fn,
+                code_lm_fn=code_lm_fn,
                 toolkit=None,
             )
         for nid in self.right_ids:
@@ -103,6 +134,7 @@ class BrainFabric:
                 skill_tags=_tags_for(role, "R"),
                 memory=self.memory,
                 lm_fn=lm_fn,
+                code_lm_fn=code_lm_fn,
                 toolkit=None,
             )
 
@@ -118,6 +150,7 @@ class BrainFabric:
         for n in self.nodes.values():
             n.toolkit = toolkit
             n.lm_fn = self.lm_fn
+            n.code_lm_fn = self.code_lm_fn
         return toolkit
 
     def _load_cfg(self) -> dict[str, Any]:

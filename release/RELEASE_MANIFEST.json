@@ -1,13 +1,14 @@
 ﻿{
-    "schema":  "drone.hive.release.v1",
+    "schema":  "drone.hive.release.v2",
     "app":  "DroneHive",
-    "version":  "1.0.0",
-    "utc":  "2026-08-11T07:15:27Z",
+    "version":  "2.0.0",
+    "utc":  "2026-08-11T08:23:30Z",
     "wheel":  [
-                  "dronehive-1.0.0-py3-none-any.whl"
+                  "dronehive-2.0.0-py3-none-any.whl"
               ],
-    "zip":  "DroneHive-1.0.0-win64.zip",
-    "exe":  "dist/DroneHive/DroneHive.exe",
-    "exe_bytes":  5857684,
+    "tui_zip":  "dronehive-tui-2.0.0-win64.zip",
+    "tui_exe":  "apps/dronehive-tui/target/release/dronehive-tui.exe",
+    "exe_bytes":  794112,
+    "uac":  false,
     "false_green":  0
 }

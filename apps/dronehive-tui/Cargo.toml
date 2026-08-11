@@ -1,0 +1,23 @@
+[package]
+name = "dronehive-tui"
+version = "2.0.0"
+edition = "2021"
+description = "DroneHive Pro lean Rust TUI — Grok-Build-style command console"
+license = "MIT"
+
+[[bin]]
+name = "dronehive-tui"
+path = "src/main.rs"
+
+[dependencies]
+crossterm = "0.28"
+ratatui = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "z"  # size — lean machine

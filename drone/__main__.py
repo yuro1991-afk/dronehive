@@ -43,6 +43,10 @@ def main(argv: list[str] | None = None) -> int:
     app_sub.add_parser("links-probe")
     app_sub.add_parser("commission")
     app_sub.add_parser("desktop", help="NATIVE desktop GUI — not a browser")
+    app_sub.add_parser(
+        "desktop-pro",
+        help="DroneHive Pro v2 desktop — free-form tools + premium UI",
+    )
     app_srv = app_sub.add_parser("serve", help="optional HTTP API (secondary)")
     app_srv.add_argument("--host", default=None)
     app_srv.add_argument("--port", type=int, default=None)
@@ -51,6 +55,19 @@ def main(argv: list[str] | None = None) -> int:
     app_task.add_argument("--lane", default="fast", choices=["fast", "full"])
     app_task.add_argument("--lm-assist", default="none")
     app_task.add_argument("--controller", default="local")
+    app_pro = app_sub.add_parser(
+        "pro",
+        help="PRO v2 free-form Ollama tool agent (real files)",
+    )
+    app_pro.add_argument("--goal", "-g", required=True)
+    app_pro.add_argument("--rounds", type=int, default=8)
+    app_pro.add_argument("--hive", action="store_true")
+    app_pro.add_argument("--no-ollama", action="store_true")
+    app_brain = app_sub.add_parser(
+        "brain",
+        help="user command → Ollama plan → swarm (v1 path)",
+    )
+    app_brain.add_argument("--command", "-c", required=True)
     app_inbox = app_sub.add_parser("inbox")
     app_inbox.add_argument("--max", type=int, default=10)
 
@@ -303,23 +320,35 @@ def main(argv: list[str] | None = None) -> int:
                 "--controller",
                 args.controller,
             ]
+        elif args.app_cmd == "pro":
+            sub_argv += ["--goal", args.goal, "--rounds", str(args.rounds)]
+            if getattr(args, "hive", False):
+                sub_argv.append("--hive")
+            if getattr(args, "no_ollama", False):
+                sub_argv.append("--no-ollama")
+        elif args.app_cmd == "brain":
+            sub_argv += ["--command", args.command]
         elif args.app_cmd == "inbox":
             sub_argv += ["--max", str(args.max)]
         elif args.app_cmd == "desktop":
             sub_argv = ["desktop"]
+        elif args.app_cmd == "desktop-pro":
+            sub_argv = ["desktop-pro"]
         return app_main(sub_argv)
 
     if args.cmd == "brain":
-        from drone.ollama_brain import brain_status, resolve_top_model
+        from drone.ollama_brain import dual_brain_status, resolve_code_model, resolve_top_model
         from drone.tools import DroneToolkit
 
         tk = DroneToolkit(root, task_id="probe")
         tools = tk.list_tools()
         payload = {
-            "ollama": brain_status(),
+            "ollama": dual_brain_status(),
             "top_model_resolved": resolve_top_model(force_refresh=True),
+            "code_worker_model": resolve_code_model(force_refresh=True),
             "tools": tools,
             "tools_wired_to_all_roles": True,
+            "code_gate": "execute must write goal .py + smoke pass or RED",
             "lm_roles": [
                 "plan",
                 "pattern",

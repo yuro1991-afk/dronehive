@@ -114,7 +114,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 860.0])
             .with_min_inner_size([960.0, 640.0])
-            .with_title("Drone Ollama · Workbench 1.0.1"),
+            .with_title("Drone Ollama · Workbench 1.1 (Ollama→drones)"),
         ..Default::default()
     };
     eframe::run_native(
@@ -138,6 +138,7 @@ fn truncate_ui(s: &str, max: usize) -> String {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
+    Command,
     Chat,
     Drones,
     Swarm,
@@ -148,6 +149,14 @@ enum Tab {
 enum Job {
     EnsureOllama,
     RefreshOllama,
+    /// MAIN path: user text → Ollama commander → mount → all 24 drones
+    Delegate {
+        host: String,
+        model: String,
+        goal: String,
+        lm_on_drones: bool,
+        auto_mount: bool,
+    },
     Chat {
         host: String,
         model: String,
@@ -197,11 +206,15 @@ struct App {
     ollama_ok: bool,
     ollama_detail: String,
     ollama_version: String,
+    /// MAIN command input — always wired Ollama → drones
+    main_input: String,
+    last_commander_brief: String,
     chat_input: String,
     chat_log: Vec<(String, String)>, // role, text
     drone_goal: String,
     swarm_goals: String,
     use_lm: bool,
+    auto_mount: bool,
     status_line: String,
     log: Vec<String>,
     last_json: String,
@@ -227,25 +240,31 @@ impl App {
         thread::spawn(move || worker(job_rx, msg_tx));
 
         let app = Self {
-            tab: Tab::Drones,
+            tab: Tab::Command,
             host: ollama_wire::DEFAULT_HOST.into(),
             model: "llama3.1:8b".into(),
             models: vec![],
             ollama_ok: false,
             ollama_detail: "starting…".into(),
             ollama_version: String::new(),
+            main_input: String::new(),
+            last_commander_brief: String::new(),
             chat_input: String::new(),
             chat_log: vec![(
                 "system".into(),
-                "Drone Ollama Workbench 1.0 — Ollama wired · 24 controllable drones · not full models per node."
+                "MAIN INPUT path: YOU → Ollama commander → task pack → all 24 drones (L||R). Chat tab is chat-only."
                     .into(),
             )],
             drone_goal: "build a worker path package with tools".into(),
             swarm_goals: "swarm A: intake artifact | swarm B: verify seal | swarm C: package evidence"
                 .into(),
             use_lm: true,
+            auto_mount: true,
             status_line: "Ensuring Ollama…".into(),
-            log: vec!["app open".into()],
+            log: vec![
+                "app open".into(),
+                "main input wire: Ollama commander → drone delegation".into(),
+            ],
             last_json: String::new(),
             last_json_title: "Results".into(),
             drones_mounted: None,
@@ -271,7 +290,12 @@ impl App {
     fn pump(&mut self) {
         loop {
             match self.rx.try_recv() {
-                Ok(Msg::Log(s)) => self.push_log(s),
+                Ok(Msg::Log(s)) => {
+                    if let Some(rest) = s.strip_prefix("commander brief: ") {
+                        self.last_commander_brief = rest.to_string();
+                    }
+                    self.push_log(s);
+                }
                 Ok(Msg::Busy(b)) => {
                     self.busy = b;
                     if b {
@@ -406,23 +430,53 @@ impl eframe::App for App {
             });
         });
 
-        // Bottom status
-        egui::TopBottomPanel::bottom("bottom").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(&self.status_line);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label("false_green:0 · controllable drones · shared Ollama brain");
+        // MAIN COMMAND BAR — always visible: Ollama → all drones
+        egui::TopBottomPanel::bottom("main_cmd")
+            .exact_height(92.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(120, 200, 255),
+                        "MAIN → Ollama → 24 drones",
+                    );
+                    ui.label(&self.status_line);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.checkbox(&mut self.auto_mount, "auto-mount");
+                        ui.checkbox(&mut self.use_lm, "LM on drones");
+                    });
                 });
+                ui.horizontal(|ui| {
+                    let resp = ui.add(
+                        egui::TextEdit::singleline(&mut self.main_input)
+                            .desired_width(ui.available_width() - 200.0)
+                            .hint_text("Type task… Enter = Ollama plans, then all drones execute"),
+                    );
+                    let send = ui
+                        .add_enabled(!self.busy, egui::Button::new("▶ DELEGATE"))
+                        .clicked()
+                        || (resp.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            && !self.busy);
+                    if send {
+                        self.submit_main_delegate();
+                    }
+                });
+                if !self.last_commander_brief.is_empty() {
+                    ui.small(format!(
+                        "last commander: {}",
+                        self.last_commander_brief.chars().take(140).collect::<String>()
+                    ));
+                }
             });
-        });
 
         // Left nav
         egui::SidePanel::left("nav").exact_width(200.0).show(ctx, |ui| {
             ui.heading("Navigate");
             ui.add_space(8.0);
+            ui.selectable_value(&mut self.tab, Tab::Command, "⬡  Command");
             ui.selectable_value(&mut self.tab, Tab::Drones, "⬡  Drones");
             ui.selectable_value(&mut self.tab, Tab::Swarm, "⬡  Swarm");
-            ui.selectable_value(&mut self.tab, Tab::Chat, "⬡  Ollama Chat");
+            ui.selectable_value(&mut self.tab, Tab::Chat, "⬡  Chat only");
             ui.selectable_value(&mut self.tab, Tab::System, "⬡  System");
             ui.add_space(16.0);
             ui.separator();
@@ -484,6 +538,7 @@ impl eframe::App for App {
         // Center
         egui::CentralPanel::default().show(ctx, |ui| {
             match self.tab {
+                Tab::Command => self.ui_command(ui),
                 Tab::Chat => self.ui_chat(ui),
                 Tab::Drones => self.ui_drones(ui),
                 Tab::Swarm => self.ui_swarm(ui),
@@ -494,6 +549,58 @@ impl eframe::App for App {
 }
 
 impl App {
+    fn submit_main_delegate(&mut self) {
+        let goal = self.main_input.trim().to_string();
+        if goal.is_empty() {
+            self.status_line = "type a task in MAIN input".into();
+            return;
+        }
+        if !self.ollama_ok {
+            self.status_line = "Ollama DOWN — click Ensure Ollama first".into();
+            self.push_log("delegate blocked: ollama not live");
+            return;
+        }
+        self.drone_goal = goal.clone();
+        self.main_input.clear();
+        self.push_log(format!("MAIN DELEGATE: {goal}"));
+        let _ = self.tx.send(Job::Delegate {
+            host: self.host.clone(),
+            model: self.model.clone(),
+            goal,
+            lm_on_drones: self.use_lm,
+            auto_mount: self.auto_mount,
+        });
+    }
+
+    fn ui_command(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Command center");
+        ui.label(
+            egui::RichText::new("Main input (bottom bar) → Ollama commander → every drone node")
+                .strong(),
+        );
+        ui.separator();
+        ui.group(|ui| {
+            ui.label("Wire");
+            ui.monospace("1. YOU type task in MAIN bar");
+            ui.monospace("2. Ollama (selected model) builds commander JSON pack");
+            ui.monospace("3. Auto-mount 24 drones (optional)");
+            ui.monospace("4. L||R fabric runs ALL roles with commander brief");
+            ui.monospace("5. If commander mode=swarm → multi-goal fan-out");
+        });
+        ui.add_space(8.0);
+        ui.label("Pipeline log");
+        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+            for line in self.log.iter().rev().take(50).rev() {
+                ui.monospace(line);
+            }
+        });
+        if !self.last_commander_brief.is_empty() {
+            ui.separator();
+            ui.heading("Last Ollama commander brief");
+            ui.label(&self.last_commander_brief);
+        }
+    }
+
     fn ui_chat(&mut self, ui: &mut egui::Ui) {
         ui.heading("Ollama Chat (wired)");
         ui.label("Shared local brain — not one model per drone.");
@@ -705,6 +812,139 @@ fn run_job(job: Job, tx: &Sender<Msg>, send_log: impl Fn(&Sender<Msg>, String)) 
                     models: st.models,
                     version: st.version,
                 });
+            }
+            Job::Delegate {
+                host,
+                model,
+                goal,
+                lm_on_drones,
+                auto_mount,
+            } => {
+                send_log(
+                    &tx,
+                    format!("DELEGATE step1 Ollama commander model={model}"),
+                );
+                // 1) Ollama commander
+                let plan = match ollama_wire::commander_plan(&host, &model, &goal) {
+                    Ok((raw, plan, ms)) => {
+                        send_log(
+                            &tx,
+                            format!(
+                                "DELEGATE step1 OK {ms}ms mission={} mode={}",
+                                plan.mission, plan.mode
+                            ),
+                        );
+                        let _ = tx.send(Msg::Log(format!(
+                            "commander brief: {}",
+                            plan.brief.chars().take(200).collect::<String>()
+                        )));
+                        // surface plan JSON
+                        let _ = tx.send(Msg::JsonResult {
+                            title: "Ollama commander pack".into(),
+                            pretty: format!(
+                                "{{\n  \"raw_preview\": {},\n  \"mission\": {},\n  \"mode\": {},\n  \"brief\": {},\n  \"subtasks\": {},\n  \"composed_goal\": {}\n}}",
+                                serde_json::to_string(&raw.chars().take(1200).collect::<String>()).unwrap_or_default(),
+                                serde_json::to_string(&plan.mission).unwrap_or_default(),
+                                serde_json::to_string(&plan.mode).unwrap_or_default(),
+                                serde_json::to_string(&plan.brief).unwrap_or_default(),
+                                serde_json::to_string(&plan.subtasks).unwrap_or_default(),
+                                serde_json::to_string(&plan.composed_goal).unwrap_or_default(),
+                            ),
+                            ok: true,
+                        });
+                        plan
+                    }
+                    Err(e) => {
+                        send_log(&tx, format!("DELEGATE step1 FAIL: {e}"));
+                        let _ = tx.send(Msg::JsonResult {
+                            title: "Ollama commander".into(),
+                            pretty: format!("commander failed: {e}"),
+                            ok: false,
+                        });
+                        return;
+                    }
+                };
+
+                // 2) mount all drones
+                if auto_mount {
+                    send_log(&tx, "DELEGATE step2 mount 24 drones".into());
+                    match drone_bridge::mount_all() {
+                        Ok(v) => {
+                            let n = v.get("mounted").and_then(|m| m.as_u64()).unwrap_or(0);
+                            send_log(&tx, format!("DELEGATE step2 mounted={n}"));
+                        }
+                        Err(e) => {
+                            send_log(&tx, format!("DELEGATE step2 mount warn: {e} (continuing)"));
+                        }
+                    }
+                }
+
+                // 3) run drones — all nodes get commander brief
+                send_log(
+                    &tx,
+                    format!(
+                        "DELEGATE step3 drones mode={} lm_on_drones={lm_on_drones}",
+                        plan.mode
+                    ),
+                );
+                let result = if plan.mode == "swarm"
+                    && plan.subtasks.len() >= 2
+                {
+                    let mut goals = plan.subtasks.clone();
+                    // prefix each with commander brief for consistency
+                    goals = goals
+                        .into_iter()
+                        .map(|g| format!("{g} | COMMANDER_BRIEF: {}", plan.brief))
+                        .collect();
+                    drone_bridge::drone_swarm(&goals, 3, "ollama")
+                } else {
+                    drone_bridge::drone_run_delegated(&plan.composed_goal, lm_on_drones)
+                };
+
+                match result {
+                    Ok(v) => {
+                        let mut out = serde_json::Map::new();
+                        out.insert(
+                            "pipeline".into(),
+                            serde_json::json!({
+                                "step1": "ollama_commander",
+                                "step2": if auto_mount { "mount_24" } else { "mount_skipped" },
+                                "step3": "all_drones_delegated",
+                                "model": model,
+                                "mission": plan.mission,
+                                "mode": plan.mode,
+                                "delegate_all_drones": plan.delegate_all_drones,
+                            }),
+                        );
+                        out.insert("commander_brief".into(), serde_json::json!(plan.brief));
+                        out.insert("composed_goal".into(), serde_json::json!(plan.composed_goal));
+                        out.insert("drone_result".into(), v.clone());
+                        let pretty = serde_json::to_string_pretty(&serde_json::Value::Object(out))
+                            .unwrap_or_default();
+                        let ok = v.get("status").and_then(|s| s.as_str()) == Some("GREEN")
+                            || v.get("status").and_then(|s| s.as_str()) == Some("PARTIAL");
+                        send_log(
+                            &tx,
+                            format!(
+                                "DELEGATE done status={}",
+                                v.get("status").and_then(|s| s.as_str()).unwrap_or("?")
+                            ),
+                        );
+                        let _ = tx.send(Msg::JsonResult {
+                            title: "Delegate: Ollama → 24 drones".into(),
+                            pretty,
+                            ok,
+                        });
+                    }
+                    Err(e) => {
+                        send_log(&tx, format!("DELEGATE step3 FAIL: {e}"));
+                        let _ = tx.send(Msg::JsonResult {
+                            title: "Delegate drones".into(),
+                            pretty: e,
+                            ok: false,
+                        });
+                    }
+                }
             }
             Job::Chat {
                 host,

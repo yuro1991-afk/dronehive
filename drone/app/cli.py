@@ -26,6 +26,10 @@ def main(argv: list[str] | None = None) -> int:
         "desktop",
         help="NATIVE desktop GUI (CustomTkinter) — not a browser",
     )
+    sub.add_parser(
+        "desktop-pro",
+        help="DroneHive Pro v2 desktop — free-form tools + premium UI",
+    )
 
     srv = sub.add_parser("serve", help="optional HTTP API only (not primary UI)")
     srv.add_argument("--host", default=None)
@@ -36,6 +40,29 @@ def main(argv: list[str] | None = None) -> int:
     task.add_argument("--lane", default="fast", choices=["fast", "full"])
     task.add_argument("--lm-assist", default="none")
     task.add_argument("--controller", default="local")
+
+    brain = sub.add_parser(
+        "brain",
+        help="MAIN PATH: user command → Ollama plan → swarm delegate",
+    )
+    brain.add_argument("--command", "-c", required=True, help="user command text")
+
+    pro = sub.add_parser(
+        "pro",
+        help="PRO v2: free-form Ollama tool agent (real files)",
+    )
+    pro.add_argument("--goal", "-g", required=True, help="user goal")
+    pro.add_argument("--rounds", type=int, default=8)
+    pro.add_argument(
+        "--hive",
+        action="store_true",
+        help="also run hive swarm follow-up after agent",
+    )
+    pro.add_argument(
+        "--no-ollama",
+        action="store_true",
+        help="heuristic deliverable only (no Ollama)",
+    )
 
     inbox = sub.add_parser("inbox", help="process file-drop inbox")
     inbox.add_argument("--max", type=int, default=10)
@@ -72,6 +99,10 @@ def main(argv: list[str] | None = None) -> int:
         from drone.app.desktop import main as desktop_main
 
         return desktop_main()
+    if args.cmd == "desktop-pro":
+        from drone.pro.desktop import main as pro_desktop_main
+
+        return pro_desktop_main()
     if args.cmd == "serve":
         from drone.app.api import serve
 
@@ -86,6 +117,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(report, indent=2))
         return 0 if report.get("status") == "GREEN" else 1
+    if args.cmd == "brain":
+        seal = svc.brain_command(args.command)
+        print(json.dumps(seal, indent=2))
+        return 0 if seal.get("status") == "GREEN" else 1
+    if args.cmd == "pro":
+        from drone.pro.service import DroneHiveProService
+
+        pro_svc = DroneHiveProService(r)
+        seal = pro_svc.pro_run(
+            args.goal,
+            max_rounds=max(1, int(args.rounds)),
+            use_ollama=not bool(args.no_ollama),
+            also_hive=bool(args.hive),
+        )
+        print(json.dumps(seal, indent=2))
+        return 0 if seal.get("status") == "GREEN" else 1
     if args.cmd == "inbox":
         print(json.dumps(svc.process_inbox(max_n=args.max), indent=2))
         return 0

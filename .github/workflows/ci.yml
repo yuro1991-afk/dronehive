@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  smoke:
+  python-smoke:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,5 +21,23 @@ jobs:
         run: python -m drone app health
       - name: Fast task
         run: python -m drone app task --goal "ci smoke" --lane fast --lm-assist none --controller local
+      - name: Pro agent (no ollama)
+        run: python -m drone app pro --goal "ci pro write ci_ok.txt" --rounds 3 --no-ollama
       - name: Work order show
         run: python -m drone work-order-show
+
+  rust-tui:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build dronehive-tui (release)
+        working-directory: apps/dronehive-tui
+        run: cargo build --release
+      - name: TUI help
+        run: .\apps\dronehive-tui\target\release\dronehive-tui.exe --help
+      - name: Upload TUI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dronehive-tui-windows
+          path: apps/dronehive-tui/target/release/dronehive-tui.exe

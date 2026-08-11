@@ -64,6 +64,12 @@ pub fn drone_run(goal: &str, controller: &str, lm_assist: &str) -> Result<Value,
     ])
 }
 
+/// Full fabric pass with Ollama as controller (task already composed by commander).
+pub fn drone_run_delegated(composed_goal: &str, lm_assist: bool) -> Result<Value, String> {
+    let lm = if lm_assist { "ollama" } else { "none" };
+    drone_run(composed_goal, "ollama", lm)
+}
+
 pub fn drone_swarm(goals: &[String], workers: u32, controller: &str) -> Result<Value, String> {
     // fabric-swarm if present; else swarm
     let mut args: Vec<String> = vec![

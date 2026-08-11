@@ -1,0 +1,31 @@
+{
+  "schema": "drone.hive.app.pro.v2",
+  "name": "DroneHive Pro",
+  "version": "2.0.0",
+  "edition": "pro",
+  "tier": "premium",
+  "product": "Premium free-form tool agent + hive swarm for power users",
+  "host": "127.0.0.1",
+  "port": 8766,
+  "lane_default": "fast",
+  "lm_assist_default": "ollama",
+  "controller_default": "ollama",
+  "pro": {
+    "free_form_tools": true,
+    "max_agent_rounds": 8,
+    "hive_followup_on_swarm_keywords": true,
+    "theme": "gold_dark"
+  },
+  "paths": {
+    "inbox": "data/app/inbox",
+    "outbox": "data/app/outbox",
+    "links": "data/app/links",
+    "commission": "out/PRO_COMMISSION_SEAL.json"
+  },
+  "honesty": {
+    "full_models_per_drone": false,
+    "free_form_tool_choice": true,
+    "sandbox": true,
+    "v1_preserved": true
+  }
+}

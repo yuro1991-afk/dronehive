@@ -1,0 +1,32 @@
+{
+  "schema": "ai.worker.drone.leash.v1",
+  "name": "host_leash",
+  "law": "12GB RTX 3060 — drones must not thrash the machine",
+  "false_green": 0,
+  "app": {
+    "activity_sample_ms": 12000,
+    "ollama_refresh_ms": 60000,
+    "repaint_idle_ms": 1000,
+    "repaint_busy_ms": 200,
+    "pulse_only_when_busy": true
+  },
+  "ollama": {
+    "code_worker_auto": false,
+    "code_worker_requires_env": "DRONE_CODE_ENABLE=1",
+    "code_model": "llama3.1:8b",
+    "commander_prefer_light": "llama3.2:3b",
+    "num_predict_code_max": 512,
+    "num_predict_chat_max": 256,
+    "keep_alive": "2m"
+  },
+  "fabric": {
+    "max_parallel_goals": 2,
+    "max_parallel_hemispheres": 2,
+    "diag_cache_seconds": 120,
+    "skip_diag_if_recent": true
+  },
+  "honesty": {
+    "leash_is_not_off": true,
+    "user_can_unleash": "set DRONE_CODE_ENABLE=1 and DRONE_LEASH=0"
+  }
+}

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 APP_SCHEMA = "drone.hive.app.v1"
-DEFAULT_VERSION = "1.0.0"
+DEFAULT_VERSION = "2.0.0"
 
 
 def user_install_dir() -> Path:
