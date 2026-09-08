@@ -37,7 +37,9 @@ TOP_PREFERENCE = [
     "ai-smarts:latest",
 ]
 
-_lock = threading.Lock()
+# Reentrant: resolve_code_model() may call resolve_top_model() while holding
+# this lock (empty-candidates fallback), so a plain Lock would self-deadlock.
+_lock = threading.RLock()
 _resolved_model: str | None = None
 _tags_cache: list[str] | None = None
 _broken_models: set[str] = set()
