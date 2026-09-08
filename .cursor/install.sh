@@ -14,8 +14,11 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "[install] Python package (stdlib-only core, editable install)"
-python3 -m pip install --upgrade pip setuptools wheel
-python3 -m pip install -e .
+# --user keeps it in ~/.local; --break-system-packages tolerates Debian's
+# PEP 668 EXTERNALLY-MANAGED marker (harmless no-op when absent). The core has
+# zero third-party deps, so only the editable 'dronehive' package is installed;
+# the build backend (setuptools/wheel) is fetched in pip's isolated build env.
+python3 -m pip install --user --break-system-packages -e .
 
 echo "[install] Rust stable toolchain for the lean TUI"
 export RUSTUP_HOME="${RUSTUP_HOME:-/usr/local/rustup}"
