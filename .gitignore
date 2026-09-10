@@ -75,3 +75,7 @@ target/
 # Local model weights / GGUF (never ship)
 models/
 
+
+# Linux release build outputs (rebuild with scripts/package_release.sh)
+release/*.tar.gz
+release/dronehive-*-linux-*.tar.gz

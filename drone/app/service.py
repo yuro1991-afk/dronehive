@@ -6,6 +6,7 @@ All external links (HTTP, file, library) go through this API.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import time
 import uuid
@@ -17,6 +18,16 @@ from .config import app_root, ensure_app_dirs, env_overrides, load_app_config
 
 def _utc() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _module_available(module: str) -> bool:
+    """True if a packaged module can be located (works for editable and
+    real wheel installs alike, where the source tree is not next to the
+    data workspace root)."""
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 class DroneHiveService:
@@ -42,13 +53,13 @@ class DroneHiveService:
             tools_ok = False
 
         modules = {
-            "fabric": (self.root / "drone" / "chain.py").is_file(),
-            "hive": (self.root / "drone" / "hive.py").is_file(),
-            "fast_lane": (self.root / "drone" / "fast_lane.py").is_file(),
-            "clean_slate": (self.root / "drone" / "clean_slate.py").is_file(),
-            "tools": (self.root / "drone" / "tools.py").is_file(),
-            "links": (self.root / "drone" / "app" / "links.py").is_file(),
-            "api": (self.root / "drone" / "app" / "api.py").is_file(),
+            "fabric": _module_available("drone.chain"),
+            "hive": _module_available("drone.hive"),
+            "fast_lane": _module_available("drone.fast_lane"),
+            "clean_slate": _module_available("drone.clean_slate"),
+            "tools": _module_available("drone.tools"),
+            "links": _module_available("drone.app.links"),
+            "api": _module_available("drone.app.api"),
         }
         ok = all(modules.values()) and tools_ok
         return {
